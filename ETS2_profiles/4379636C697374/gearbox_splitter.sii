@@ -1,0 +1,129 @@
+SiiNunit
+{
+direct_gearbox_config : _nameless.0x.7f9d.9822.70b0 {
+ name: ""
+ clutch_mode: analog
+ gears: 15
+ gears[0]: _nameless.0x.7f9d.91c3.ddc0
+ gears[1]: _nameless.0x.7f9d.91cd.a470
+ gears[2]: _nameless.0x.7f9d.91cd.c670
+ gears[3]: _nameless.0x.7f9d.91cd.9fc0
+ gears[4]: _nameless.0x.7f9d.9822.8dd0
+ gears[5]: _nameless.0x.7f9d.91cd.7690
+ gears[6]: _nameless.0x.7f9d.91c3.3230
+ gears[7]: _nameless.0x.7f9d.91cd.7be0
+ gears[8]: _nameless.0x.7f9d.91cd.7a80
+ gears[9]: _nameless.0x.7f9d.9820.e680
+ gears[10]: _nameless.0x.7f9d.91c2.6b30
+ gears[11]: _nameless.0x.7f9d.91cd.8750
+ gears[12]: _nameless.0x.7f9d.91cd.9550
+ gears[13]: _nameless.0x.7f9d.91cd.9ea0
+ gears[14]: _nameless.0x.7f9d.91cd.a120
+}
+
+direct_gearbox_gear : _nameless.0x.7f9d.91c3.ddc0 {
+ gear_impulse_index: 0
+ selector_1: -1
+ selector_2: -1
+ gear: 0
+}
+
+direct_gearbox_gear : _nameless.0x.7f9d.91cd.a470 {
+ gear_impulse_index: 1
+ selector_1: 0
+ selector_2: -1
+ gear: -1
+}
+
+direct_gearbox_gear : _nameless.0x.7f9d.91cd.c670 {
+ gear_impulse_index: 1
+ selector_1: 1
+ selector_2: -1
+ gear: -2
+}
+
+direct_gearbox_gear : _nameless.0x.7f9d.91cd.9fc0 {
+ gear_impulse_index: 2
+ selector_1: 0
+ selector_2: -1
+ gear: 1
+}
+
+direct_gearbox_gear : _nameless.0x.7f9d.9822.8dd0 {
+ gear_impulse_index: 3
+ selector_1: 0
+ selector_2: -1
+ gear: 3
+}
+
+direct_gearbox_gear : _nameless.0x.7f9d.91cd.7690 {
+ gear_impulse_index: 4
+ selector_1: 0
+ selector_2: -1
+ gear: 5
+}
+
+direct_gearbox_gear : _nameless.0x.7f9d.91c3.3230 {
+ gear_impulse_index: 5
+ selector_1: 0
+ selector_2: -1
+ gear: 7
+}
+
+direct_gearbox_gear : _nameless.0x.7f9d.91cd.7be0 {
+ gear_impulse_index: 6
+ selector_1: 0
+ selector_2: -1
+ gear: 9
+}
+
+direct_gearbox_gear : _nameless.0x.7f9d.91cd.7a80 {
+ gear_impulse_index: 7
+ selector_1: 0
+ selector_2: -1
+ gear: 11
+}
+
+direct_gearbox_gear : _nameless.0x.7f9d.9820.e680 {
+ gear_impulse_index: 2
+ selector_1: 1
+ selector_2: -1
+ gear: 2
+}
+
+direct_gearbox_gear : _nameless.0x.7f9d.91c2.6b30 {
+ gear_impulse_index: 3
+ selector_1: 1
+ selector_2: -1
+ gear: 4
+}
+
+direct_gearbox_gear : _nameless.0x.7f9d.91cd.8750 {
+ gear_impulse_index: 4
+ selector_1: 1
+ selector_2: -1
+ gear: 6
+}
+
+direct_gearbox_gear : _nameless.0x.7f9d.91cd.9550 {
+ gear_impulse_index: 5
+ selector_1: 1
+ selector_2: -1
+ gear: 8
+}
+
+direct_gearbox_gear : _nameless.0x.7f9d.91cd.9ea0 {
+ gear_impulse_index: 6
+ selector_1: 1
+ selector_2: -1
+ gear: 10
+}
+
+direct_gearbox_gear : _nameless.0x.7f9d.91cd.a120 {
+ gear_impulse_index: 7
+ selector_1: 1
+ selector_2: -1
+ gear: 12
+}
+
+}

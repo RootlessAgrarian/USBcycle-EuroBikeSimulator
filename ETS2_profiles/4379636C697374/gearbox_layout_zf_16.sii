@@ -1,0 +1,199 @@
+SiiNunit
+{
+direct_gearbox_config : _nameless.7fbf.b786.2950 {
+ name: "ZF 16 @@speeds@@"
+ clutch_mode: analog
+ selector_mode: range_split
+ gears: 21
+ gears[0]: _nameless.7fbf.b786.2fe0
+ gears[1]: _nameless.7fbf.b782.b1a0
+ gears[2]: _nameless.7fbf.b786.fd60
+ gears[3]: _nameless.7fbf.b785.1b60
+ gears[4]: _nameless.7fbf.b785.1be0
+ gears[5]: _nameless.7fbf.b782.a4b0
+ gears[6]: _nameless.7fbf.b781.df50
+ gears[7]: _nameless.7fbf.b781.e0d0
+ gears[8]: _nameless.7fbf.b786.33f0
+ gears[9]: _nameless.7fbf.b786.7aa0
+ gears[10]: _nameless.7fbf.b786.7d00
+ gears[11]: _nameless.7fbf.b786.9c70
+ gears[12]: _nameless.7fbf.b786.88f0
+ gears[13]: _nameless.7fbf.b786.9950
+ gears[14]: _nameless.7fbf.b786.d6f0
+ gears[15]: _nameless.7fbf.b786.aa70
+ gears[16]: _nameless.7fbf.b786.ab10
+ gears[17]: _nameless.7fbf.b789.0cc0
+ gears[18]: _nameless.7fbf.b786.c5b0
+ gears[19]: _nameless.7fbf.b786.d570
+ gears[20]: _nameless.7fbf.b786.e7a0
+}
+
+direct_gearbox_gear : _nameless.7fbf.b786.2fe0 {
+ gear_impulse_index: 0
+ selector_1: -1
+ selector_2: -1
+ gear: 0
+ name: N
+}
+
+direct_gearbox_gear : _nameless.7fbf.b782.b1a0 {
+ gear_impulse_index: 3
+ selector_1: -1
+ selector_2: 0
+ gear: -1
+ name: RL
+}
+
+direct_gearbox_gear : _nameless.7fbf.b786.fd60 {
+ gear_impulse_index: 3
+ selector_1: -1
+ selector_2: 1
+ gear: -2
+ name: RH
+}
+
+direct_gearbox_gear : _nameless.7fbf.b785.1b60 {
+ gear_impulse_index: 4
+ selector_1: 0
+ selector_2: 0
+ gear: 1
+ name: 1L
+}
+
+direct_gearbox_gear : _nameless.7fbf.b785.1be0 {
+ gear_impulse_index: 4
+ selector_1: 0
+ selector_2: 1
+ gear: 2
+ name: 1H
+}
+
+direct_gearbox_gear : _nameless.7fbf.b782.a4b0 {
+ gear_impulse_index: 5
+ selector_1: 0
+ selector_2: 0
+ gear: 3
+ name: 2L
+}
+
+direct_gearbox_gear : _nameless.7fbf.b781.df50 {
+ gear_impulse_index: 5
+ selector_1: 0
+ selector_2: 1
+ gear: 4
+ name: 2H
+}
+
+direct_gearbox_gear : _nameless.7fbf.b781.e0d0 {
+ gear_impulse_index: 6
+ selector_1: 0
+ selector_2: 0
+ gear: 5
+ name: 3L
+}
+
+direct_gearbox_gear : _nameless.7fbf.b786.33f0 {
+ gear_impulse_index: 6
+ selector_1: 0
+ selector_2: 1
+ gear: 6
+ name: 3H
+}
+
+direct_gearbox_gear : _nameless.7fbf.b786.7aa0 {
+ gear_impulse_index: 7
+ selector_1: 0
+ selector_2: 0
+ gear: 7
+ name: 4L
+}
+
+direct_gearbox_gear : _nameless.7fbf.b786.7d00 {
+ gear_impulse_index: 7
+ selector_1: 0
+ selector_2: 1
+ gear: 8
+ name: 4H
+}
+
+direct_gearbox_gear : _nameless.7fbf.b786.9c70 {
+ gear_impulse_index: 4
+ selector_1: 1
+ selector_2: 0
+ gear: 9
+ name: 5L
+}
+
+direct_gearbox_gear : _nameless.7fbf.b786.88f0 {
+ gear_impulse_index: 4
+ selector_1: 1
+ selector_2: 1
+ gear: 10
+ name: 5H
+}
+
+direct_gearbox_gear : _nameless.7fbf.b786.9950 {
+ gear_impulse_index: 5
+ selector_1: 1
+ selector_2: 0
+ gear: 11
+ name: 6L
+}
+
+direct_gearbox_gear : _nameless.7fbf.b786.d6f0 {
+ gear_impulse_index: 5
+ selector_1: 1
+ selector_2: 1
+ gear: 12
+ name: 6H
+}
+
+direct_gearbox_gear : _nameless.7fbf.b786.aa70 {
+ gear_impulse_index: 6
+ selector_1: 1
+ selector_2: 0
+ gear: 13
+ name: 7L
+}
+
+direct_gearbox_gear : _nameless.7fbf.b786.ab10 {
+ gear_impulse_index: 6
+ selector_1: 1
+ selector_2: 1
+ gear: 14
+ name: 7H
+}
+
+direct_gearbox_gear : _nameless.7fbf.b789.0cc0 {
+ gear_impulse_index: 7
+ selector_1: 1
+ selector_2: 0
+ gear: 15
+ name: 8L
+}
+
+direct_gearbox_gear : _nameless.7fbf.b786.c5b0 {
+ gear_impulse_index: 7
+ selector_1: 1
+ selector_2: 1
+ gear: 16
+ name: 8H
+}
+
+direct_gearbox_gear : _nameless.7fbf.b786.d570 {
+ gear_impulse_index: 1
+ selector_1: -1
+ selector_2: -1
+ gear: 0
+ name: ""
+}
+
+direct_gearbox_gear : _nameless.7fbf.b786.e7a0 {
+ gear_impulse_index: 2
+ selector_1: -1
+ selector_2: -1
+ gear: 0
+ name: ""
+}
+
+}
