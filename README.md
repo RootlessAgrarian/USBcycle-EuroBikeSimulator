@@ -3,7 +3,8 @@ Arduino code and other bits and pieces required to ride a bike through ETS2
 
 NOTE (Sep 20 2017):  this project is NOT ready for public download, I have just established this 
 github repo as a secure remote backup for my WIP.  When it is release-ready this README will be
-updated, and there will be a YouTube video.  
+updated, and there will be a YouTube video.  The project is complete (this version) and working,
+just not adequately packaged and documented yet.
 
 If you are curious, the project in a nutshell is this:  Arduino code and related Euro Truck Simulator 2
 mods to make it possible to ride a stationary bike (in my case my regular mtb on a trainer stand) through 
