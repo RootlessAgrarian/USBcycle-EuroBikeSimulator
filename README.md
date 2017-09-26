@@ -1,7 +1,7 @@
 # EuroBikeSimulator
 Arduino code and other bits and pieces required to ride a bike through ETS2
 
-NOTE (Sep 20 2017):  this project is NOT ready for public download, I have just established this 
+NOTE (Sep 20 2017):  this project is NOT QUITE ready for public download, I have just established this 
 github repo as a secure remote backup for my WIP.  When it is release-ready this README will be
 updated, and there will be a YouTube video.  The project is complete (this version) and working,
 just not adequately packaged and documented yet.
