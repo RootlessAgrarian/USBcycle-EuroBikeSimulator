@@ -25,4 +25,4 @@ dark days!
 Huge thanks and appreciation to the team at SCS, authors of the core ETS2 game, and the ProMods team,
 authors of imho the best map extension available.  Both teams have created a world of startling beauty
 and richness which is a pleasure to visit.  Also thanks to a few pioneer makers who have created similar
-(but not quite as complex) bike controllers over the last couple of years.
+bike game controllers over the last couple of years:  your projects really inspired me.
