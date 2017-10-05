@@ -1,38 +1,52 @@
 
 
 // This is Leo2, the ETS2 (and other driving games?) side of the USB HID controller.
-// BETA VERSION 2 (current) compiled first time APr 28
+// BETA VERSION 2 compiled first time Apr 28 2017
+// RELEASE VERSION June 20 2017
 // Testing:  using external editor (vim) with IDE.
 //
 // Leo2 is a slave on the i2c bus.  It shows up as HIDM under OSX (in Arduino IDE menus)
-// leo 2 will do the reading of reed switches and analog inputs from the bike (everything
+// Leo 2 will do the reading of reed switches and analog inputs from the bike (everything
 // except the i2c rotary hall sensor, in other words).
-// So that means 3 reed switches, and the brake proximity sensor.
-// It get the steering value via I2C from Leo1, which is monitoring the rotary Hall encoder.
-// then (depending on mode) it will either send or not send HID data.
+// So that means 3 reed switches, plus the brake proximity sensor.
+// It gets the steering value via I2C from Leo1, which is monitoring the rotary Hall encoder.
+// Then in normal operation it will send HID data for 3 joystick axes:  steering, brake, accelerator.
 // Leo1 is also in charge of the "value pot" and its associated 2 digit 7seg display.
-// It will report any changes to this value back to Leo1 via I2C.
+// It will report any changes to this value back to Leo1 via I2C.  Leo1 will keep this
+// current value available and use it to set parameters chosen by the user (by button press).
+// That is, if you want to set game warp speed, set the pot value (Leo2 reads it and reports to Leo1)
+// then press one of the Trellis buttons (Leo1 reads the button and uses the pot value reported by Leo2
+// to generate a command to send to the game engine).
 //
-//
+// I2C startup gotchas:
 // Note that it takes 8 seconds before the Wire handshake is complete, also that 
 // the Uno (sparkfun) I used for this test resets itself twice.  
 // And that Leo1 (master) may hang in init if Leo2 (slave) is not powered up first.
 // So the last thing that Leo1 checks for is Leo2 being awake on the I2C bus.
 //
-
+// To recap:
 // Leo1 reads rotation off the AS5601 and passes it to Leo2;
 // Leo2 reads rpm and brake directly.
 
-// Via the Joystick library we get everything except the hat.  The hat is always 
+// Via the Joystick library we can set everything except the hat.  The hat is always 
 // pointing due north for some reason (need to work on that).  X and Y axes work fine
-// and so do buttons.  So for now, no hat.
+// and so do buttons.  So for now, no hat.  It's OK.
 
+// We will use keyboard keys (Leo1) for all the in-game commands, leaving the joystick
+// buttons alone (I have them all set up for my GT Driving Force wheel).  We'll just use
+// three joystick axes.
+
+// INCLUDE:  Wire.h for i2c, I2C_Anything.h for 2 way data transfer Leo1/Leo2, Joystick.h
+//           for joystick emulation, and TM1637 library for the 2 digit 7seg dumb display.
 #include <Wire.h>
 #include "I2C_Anything.h"
 #include <Joystick.h>
 #include <TM1637Display.h>
 
+//-------------------------------------------------------------------
+//
 // create the basic 7 seg display (crude stuff)
+//
 #define CLK 14
 #define DIO 15
 
@@ -46,6 +60,9 @@ const uint8_t SEG_DONE[] = {
 // 2 digit cheapie 7deg breakout board
 TM1637Display display(CLK, DIO);
 
+//
+//-------------------------------------------------------------------
+//
 // Create the Joystick
  
   Joystick_ Joystick(0x10, 
@@ -59,7 +76,8 @@ TM1637Display display(CLK, DIO);
 // looks like you cannot be a multiaxis controller, you have to be a JOYSTICK type ctrlr.
 // if you choose MULTI_AXIS, OSX will go mad and start pushing the mouse pointer around.
 //
- 
+//-------------------------------------------------------------------
+
 // pretty debug print lines
 
 #define DEBUG
@@ -86,6 +104,9 @@ TM1637Display display(CLK, DIO);
 String msg = "foo";
 String msg2 = "bar";
 
+//-------------------------------------------------------------------
+// I2C data sharing (this is not peer/peer but master/slave, and Leo2 is an I2C slave).
+
 // prepare to share data with Leo1 over I2C using I2C_Anything lib
 // note that this struct MUST be identical on each device and should probably
 // be defined in a shared .h file.  for now, just make sure they match.
@@ -100,7 +121,9 @@ struct __attribute__ ((packed)) SHARE_DATA {
   int mask = 0;       // master shares with us selected switch status or some other value
 };
 
-// this also could be in a shared .h file
+//-------------------------------------------------------------------
+
+// all this also could be in a shared .h file
 float rpm = 0.0;
 const int maxRPM = 96;     // that is pedaling all out on bike (harder than stepper!)
 const int minRPM = 20;      // dead slow!
@@ -126,7 +149,7 @@ int brakeMin = 560;                     // these values empirically determined
 int brakeMax = 880;
 int tval = 0;
                                       
-//give a name to the group of data
+//give a name to the group of data we share
 SHARE_DATA share_data;
 boolean gotData = 0;  // this is set once, the first time we get data from master
 
@@ -164,8 +187,9 @@ const int diagLED = whtLED1;
 float potVal = 0.0;
 int potPct = 0;
 
+//-------------------------------------------------------------------
 //
-//    -- ROTATION TELEMETRY
+//    *** ROTATION TELEMETRY
 //
 // in theory we only need 2 sensors but in practise the reed switch can bounce
 // -- you can get 2 edges for one pass of the magnet.  so I disallow "self" as
@@ -213,6 +237,13 @@ int potPct = 0;
   long calibrateBegin = 0;
   int calTime = 5000;
   int lastRpm;
+//-------------------------------------------------------------------
+
+//
+////
+////// SETUP
+////
+//
 
 void setup() {
 
@@ -221,16 +252,20 @@ void setup() {
 
   zeroBrake();
   
+  pinMode(trimPot,INPUT);       // A0 is where we read the hall effect sensor for brake action
+
   pinMode(brakePin,INPUT);      // A5 is where we read the hall effect sensor for brake action
-  
+
   pinMode(sw1,INPUT_PULLUP);
 
   
   // turn off all led lights
 
   pinMode(stopLED,OUTPUT);
-  digitalWrite(stopLED,LOW);
   
+  digitalWrite(stopLED,LOW);
+
+  // basic coloured LEDs
   for (int i = A1; i <= A4; i++) {
     pinMode(i,OUTPUT);
     digitalWrite(i,LOW);
@@ -240,7 +275,8 @@ void setup() {
     pinMode(i,OUTPUT);
     digitalWrite(i,LOW);
   }
-  
+
+  // reed switches when closed connect pin to ground
   pinMode(reed0,INPUT_PULLUP);
   pinMode(reed1,INPUT_PULLUP);
   pinMode(reed2,INPUT_PULLUP);
@@ -256,6 +292,9 @@ void setup() {
   digitalWrite(diagLED,HIGH);
   delay(100);
   
+  // 
+  // now try to join the I2C bus and hope that the bus master is awake by now
+  //
   Serial.println("Join I2C bus");
   Wire.begin(I2C_SLAVE_ADDRESS);                // join i2c bus with address #8
   // there may be a long delay
@@ -263,10 +302,14 @@ void setup() {
   Wire.onRequest(requestEvent); // register event for request from master
   // the master will set the timing for shared data exchanges
   // so we should never get interrupted again in the middle of our ISR
-  
+
+  //
+  // startup the joystick emulation
+  //
   Serial.println("Begin Joystick emulation!");
   Joystick.begin();
   delay(100);
+  
   // set value ranges for accelerator (Xaxis, or axis 0 to ETS2) and steering (axis 1)
   // now adding Brake (Z axis)... map oddball brake values to 0-255
   Joystick.setXAxisRange(0,255);
@@ -285,22 +328,34 @@ void setup() {
   
 }
 
+//-------------------------------------------------------------------
+
+//
+////
+////// LOOP
+////
+//
+
 void loop() {
 
 //  Leo 2 owns the Hall proximity sensor on the brake cable.
+//  first, check the brake.
+    checkBrake();
 
-  checkBrake();
+//  next, read the trim pot
+    int potRaw = analogRead(trimPot);
+    potVal = potRaw / 1023.0;               // percentage, between 0 and .99 or so
+//  for some reason turning this pot up interferes with RPM -- still scratching head
+//  over this one.  for now, the fix is to turn the pot down to 0 after setting a 
+//  user param.
 
-// read the trim pot
-  int potRaw = analogRead(trimPot);
-  potVal = potRaw / 1023.0;               // percentage, between 0 and .99 or so
-  
   // Serial.print("POT RAW: "); Serial.println(potRaw);
   // Serial.print("POT VAL: "); Serial.println(potVal);
 
-// read the reed switches to determine rpm
+// then read the reed switches to determine rpm
 // we are using the rainbow LEDs to show reed switch actuation because one of our
-// monochrome (yellow) LEDs is dead.  So the LEDs are grn ylo red for reeds 0 1 2
+// set of monochrome (yellow) LEDs is dead.  So the LEDs are grn ylo red for reeds 0 1 2
+
    for (int i = 0; i < numSensors; i++ ) {
     int val = readSensor(i);
     if (val >= 0) {
@@ -322,6 +377,7 @@ void loop() {
   rpm = average;
 
   long now = millis();
+  
   /*
     Serial.print("Received: ");
     Serial.print(rpm);
@@ -331,19 +387,20 @@ void loop() {
     Serial.println(now);
   */
    
-
-  // if steering has changed, respond;  Leo1 will send us steering values
-  // steering looks jerky ... need to smooth it out somehow.
+// Y axis:  steering
+// if steering has changed, respond;  Leo1 will send us steering values
+// beta version steering looks jerky ... need to smooth it out somehow... (done)
   
   if (steerVal != lastSteer) {
   Joystick.setYAxis(steerVal);
   lastSteer = steerVal;
   }
 
- // the Hall proximity sensor is super jittery for whatever reasons, it's fluctuating
- // by 30 counts or more;  we hide this filtering in the brakeRead function
- // we preserve the raw value and convert at the last minute (only on demand) to 0-255.
- // we also clip "close to zero" to prevent slight brake dragging at low values
+// Z axis:  brake
+// the Hall proximity sensor is super jittery for whatever reasons, it's fluctuating
+// by 30 counts or more;  we hide this filtering in the brakeRead function
+// we preserve the raw value and convert at the last minute (only on demand) to 0-255.
+// we also clip "close to zero" to prevent slight brake dragging at low values
  
   if (brakeVal != lastBrake) {
     if ((brakeVal - brakeMin) <= brakeNoise) {
@@ -354,38 +411,30 @@ void loop() {
     Joystick.setZAxis(newval);
   }
 
-  //  if rpm has changed, respond
+// X axis:  accelerator
+// if rpm has changed, respond
   if (rpm != lastRpm) {
     tval = 0;         // time for a new throttle value
-  if (rpm >= minRPM) {
-    Stopped = 0;
-    digitalWrite(bluLight,LOW);
-    tval = map(round(rpm),minRPM,maxRPM,0,255);
-    // turn off all speed lights (no need as we are not using them any more).
- /*   for (int i=4; i<=7; i++) {
-    digitalWrite(i,LOW);
-    }
- */
+    if (rpm >= minRPM) {
+      Stopped = 0;
+      digitalWrite(bluLight,LOW);
+      tval = map(round(rpm),minRPM,maxRPM,0,255);
     /*
     Serial.print("RPM = ");
     Serial.print(rpm);
     Serial.print("   THRO = ");
     Serial.print(tval);
     Serial.print("   STEER = ");
-    Serial.println(tilt);
+    Serial.println(steerVal);
     */
-    Joystick.setXAxis(tval);
-  } else {
-    digitalWrite(bluLight,HIGH);    // we've stopped pedalling
-  }
+      Joystick.setXAxis(tval);
+    } else {
+      digitalWrite(bluLight,HIGH);    // we've stopped pedalling
+    }
   }
   
-  // light up a rainbow LED speed indicator
-  // displaySpeed()
-  // this is now Leo 1's job
-
-// when you have done all the important stuff, update the pot readout
-// every .10 seconds or so
+// when you have done all the really important stuff, update the pot readout
+// every .20 seconds or so
 
  if (!(now % 200)) {
   potPct = round(potVal * 100);           // strictly for display: x100 and round it to int
@@ -401,61 +450,37 @@ void loop() {
   // there is something very odd about this pot.  if it is set to max value .99, then
   // rpm goes to zero and stays there despite pedalling.  
   // if it is set to min value 0 then rpm seems correct.
-  // if it is set in between somewhere then rpm randomly drops to zero and then recovers,
-  // the dropouts being more frequent at higher values.
+  // if it is set in between somewhere then rpm repeatedly and randomly drops to zero 
+  // and then recovers, the dropouts being more frequent at higher values.
   // not sure if this means that the reeds are not being read, or that i2c is being 
-  // interfered with... or...?  I think I'll add a debug that lights up a Stop (rpm 0) light
-  // on Leo 1 so we can see if it's only Leo 2 that thinks rpm is zero. 
-
-  // and then check for I2C data
+  // interfered with... or...?  
+  // I notice that the reed edge detect LEDs are still blinking when the dropout happens,
+  // so we are detecting the reed switches OK.  more research needed.
+  
+  // lastly check for I2C data
   
   // always do this after first data received.
   if (!gotData) return;
-  // Serial.print("invertSpinDir = ");
-  // Serial.println(invertSpinDir);
+
   steerVal = share_data.steer;
   swMask = share_data.mask;
 
-// note that we ONLY read the elements we do NOT write.
-// also that the master controls the timing, so there should be no conflict.
+  // note that swMask is not actually being used, but if it were used it could pass
+  // switch settings from Leo1 to Leo2 and vice versa.
+
+  // note that we can ONLY read the elements we do NOT write.
+  // also that the master controls the timing, so there should be no conflict.
 
   
 // END OF MAINLOOP
 
 }
 
+//-------------------------------------------------------------------
+// FUNCTIONS
+//-------------------------------------------------------------------
 
-// Leo1 used to do this, but now Leo2 controls the rainbow speedometer
-
-void displaySpeed() {
-
-  
-  if (rpm < slowThresh) {
-    digitalWrite(bluLight,HIGH);
-    digitalWrite(grnLight,LOW);
-    digitalWrite(yloLight,LOW);
-    digitalWrite(redLight,LOW);
-  }
-  if (rpm >= slowThresh && rpm < medThresh) {
-    digitalWrite(grnLight,HIGH);
-    digitalWrite(yloLight,LOW);
-    digitalWrite(redLight,LOW);
-    digitalWrite(bluLight,LOW);
-  }
-  if (rpm >= medThresh && rpm < fastThresh) {
-    digitalWrite(yloLight,HIGH);
-    digitalWrite(redLight,LOW);
-    digitalWrite(grnLight,LOW);
-    digitalWrite(bluLight,LOW);
-  }
-  if (rpm >= fastThresh) {
-    digitalWrite(redLight,HIGH);
-    digitalWrite(yloLight,LOW);
-    digitalWrite(grnLight,LOW);
-    digitalWrite(bluLight,LOW);
-  }
-  
-}
+//-------------------------------------------------------------------
 // function that executes whenever data is received from master
 // this function is registered as an event, see setup()
 // in EasyTransfer, this function is null
@@ -481,6 +506,8 @@ void requestEvent() {
   
 }
 
+//-------------------------------------------------------------------
+
 void initTelemetry () {
   
   directionMatrix[0][1] = 1;
@@ -503,6 +530,7 @@ void initTelemetry () {
   lastdir = 0;
   
 }
+//-------------------------------------------------------------------
 
 void zeroBrake() {
     // null out brake boxcar array
@@ -510,6 +538,7 @@ void zeroBrake() {
     brakeReads[thisReading] = 0;
   }
 }
+//-------------------------------------------------------------------
 
 void zeroBoxcar (int i) {
   //Serial.print("ZERO BOXCAR:  ");
@@ -521,6 +550,7 @@ void zeroBoxcar (int i) {
   rpmBuffer = 0;
   readIndex = 0;
 }
+//-------------------------------------------------------------------
 
 int readSensor(int i) {
 
@@ -640,6 +670,7 @@ int readSensor(int i) {
   
 }
 
+//-------------------------------------------------------------------
 
 void stopTheWorld(int i) {
     
@@ -669,6 +700,8 @@ void stopTheWorld(int i) {
       }
       
 }
+
+//-------------------------------------------------------------------
 
 void updateRpm(float rpm)  {
 
@@ -726,7 +759,10 @@ void updateRpm(float rpm)  {
  
 }
 
+
+//-------------------------------------------------------------------
 // not actually using this right now.
+// place holder for future feature allowing user to recalibrate rpm range
 
 boolean checkCalibration() {
 
@@ -765,6 +801,8 @@ boolean checkCalibration() {
     }
 
   }
+  
+//-------------------------------------------------------------------
 
 // read the brake sensor and if it has changed by more than Noise, update saved value
 // otherwise do nothing
@@ -804,4 +842,8 @@ void checkBrake() {
   // later in the code we will have to map this to 0-255
   
 }
+
+//-------------------------------------------------------------------
+//-----------------------------END-----------------------------------
+//-------------------------------------------------------------------
 

@@ -14,11 +14,15 @@ const char compile_date[] = __DATE__ " " __TIME__;
 //   matrix reader, can handle almost all ETS2 interactions).
 //   Leo 2 only provides joystick axis input to ETS2 (accel, brake, and steering).
 
-// Leo 1 was for a while equipped with a LinkSprite i2c i/o port expander 
-//       adding 16 digital i/o ports.
+// Leo 1 was for a while equipped with a LinkSprite i2c i/o port expander shield (not installed as a shield, but
+//       as a separate component) adding 16 digital i/o ports.
 // This enabled it to handle all the LED indicator lighting, function buttons, etc.
 // This was later removed again to simplify things:  managed to just squeeze the app into
-// available ports. however there are xtalk issues and the Sprite might not have been a bad idea.
+// available ports. The Sprite did work and could be reintroduced if you need more ports,
+// or you could replace Leo1 with a Mega.
+// If you do use a LinkSprite: WARNING, be aware that the silkscreen is wrong on these boards!
+//    the GPIOA ports are labelled backwards, i.e. D7 is really D0 and vice versa.  other than that
+//    it tested out just fine.  And it works with Adafruit's generic library, which is kewl.
 //
 //   NEW PIN MAP  May 17 2017:
 //    Native Analog:  used as digital in
@@ -34,16 +38,36 @@ const char compile_date[] = __DATE__ " " __TIME__;
 
 //
 // ETS2 game settings:  BikeView mod, warp .6, rich-start profile (provided)
-// user settings (aside from normal truck operation) provided in final version via physical buttons:
+// user options (aside from normal truck operation) provided in final version via physical buttons:
 //  set warp  (pot plus button)
-//  turn traffic on/off
-//  change weather to fair
-//  change clock to tomorrow morning (set time by pot?)
-//  goto selected excellent bike rides on the map (pot plus buttons)
+//  turn traffic on/off (keypad button)
+//  change weather to fair (keypad button)
+//  change clock to tomorrow morning (keypad button)
+//  change clock to requested hour (pot plus button, odd numbered hours from 3 to 11)
+//  goto selected excellent bike rides on the map (pot plus button, right now we can have 11 rides)
 
-// ENOUGH VERBIAGE.  CODE BEGINS HERE
+// ***
+// *** future feature wishlist...
+// ***
+//     reintroduce wiichuck code w/switch select between wiimouse and real mouse?
+//     multiline panel display with continous v scroller knob
+//     mute the blue LED, too bright (or use different colour palette for LEDs)
+//     add ability to Hold selected keypad buttons, like ENTER and the godcam controls (in progress Sep 2017)
 
-// LIBRARIES
+// ***
+// ****
+// *****
+// ******
+// ******* ENOUGH VERBIAGE.  CODE BEGINS HERE
+// ******
+// *****
+// ****
+// ***
+
+// ************************************************************************************************
+// *** INCLUDES, GLOBALS AND CONSTANTS
+// ************************************************************************************************
+
 //
 // we need Wire to talk to the nunchuck over i2c. and to talk to Leo 2.
 // we need Keyboard to send HID keyboard events.
@@ -53,14 +77,18 @@ const char compile_date[] = __DATE__ " " __TIME__;
 // Adafruit 7 seg LED library, Adafruit Trellis keypad library
 // Leo2 uses TM1637 simple 7seg library to drive a dumb breakout
 //
+
+// *** BASIC DUINO LIBRARIES
+
 #include <Wire.h>
 #include <Keyboard.h>
 #include <Mouse.h>
 
-// you need these defs in order to send any keypad keys via Keyboard.press(val)
-// and you need keypad keys for my ETS2 control map; though I suppose I could 
-// eliminate them I prefer to leave the keymap familiar in case I revert to using
-// a usb keyboard at any time.
+// *** Extended Keyboard Definitions
+//     you need these defs in order to send any keypad keys via Keyboard.press(val)
+//     and you need keypad keys for my ETS2 control map; though I suppose I could 
+//     eliminate them I prefer to leave the keymap familiar in case I revert to using
+//     a usb keyboard at any time.  Why these are not in Keyboard.h I have no idea.
 const byte KEYPAD_0 = 234;
 const byte KEYPAD_1 = 225;
 const byte KEYPAD_2 = 226;
@@ -74,7 +102,9 @@ const byte KEYPAD_9 = 233;
 const byte KEY_ENTER = 176;
 const byte KEYPAD_ENTER = 224;
 
-// definitions for the Rotary Hall sensor for steering (AS5601)
+// ***
+// *** definitions for the AS5601 Rotary Hall sensor for steering (an i2c device)
+// ***
 #include <Encoder.h>
 Encoder AS5601enc(18, 19);
 // these values are absolutes, i,e, -90 to 90 on the bars;  but we would like more sensitive steering
@@ -86,14 +116,21 @@ int maxRotaryHall = maxlimRotaryHall;
 int minRotaryHall = minlimRotaryHall;
 int steerVal = 0;
 int rawSteerVal = 0;
-  
+
+// ***
+// ***  definitions for Adafruit GFX
+// ***
 #include <Adafruit_GFX.h>
 #include "Adafruit_LEDBackpack.h"
 // initialise a fancy adafruit 7 seg led display
 Adafruit_7segment matrix = Adafruit_7segment();
 
+// ***
+// ***  definitions for Adafruit Trellis 4x4 light-up keypads
+// ***
 #include "Adafruit_Trellis.h"
-// and a fancy adafruit 16 button keypad or two
+// we have 2 of these keypads.  wired up correctly they appear as a continuous sequence of button numbers
+// to the adafruit library
 Adafruit_Trellis matrix0 = Adafruit_Trellis();
 Adafruit_Trellis matrix1 = Adafruit_Trellis();
 #define MOMENTARY 0
@@ -107,24 +144,14 @@ Adafruit_TrellisSet trellis =  Adafruit_TrellisSet(&matrix0, &matrix1);
 int trellisPress=-1;    // -1 is the default or No Press value
 unsigned int trellisDown = 0;   // bit mask that shows if a trellis key is being held down
 
-#define MAXANGLE 90
-#define MINANGLE -90
-// int angleStart, currentAngle;
-// double angle;
-//
-// LEGACY NOTES:
-// at present we are NOT using an i2c i/o expander because we can just barely squeeze
-// all the ports onto 2 leos and would like to avoid any extra i2c overhead.  the trellis
-// devices are quite expensive enough to monitor.
-// an earlier version used the i2c i/o expander shielf from LinkSprite
-// be aware that the silkscreen is wrong on these boards and the GPIOA ports
-// are labelled backwards, i.e. D7 is really D0 and vice versa.  other than that
-// it tested out just fine.  And it works with Adafruit's generic library, which is kewl.
+// ***
+// ***  This is the init for the LinkSprite, just in case you want to use one
+// ***
 /*
 #include "Adafruit_MCP23017.h"
 Adafruit_MCP23017 mcp;
 */
-// which means that we don't have to do all this:
+// but this version doesn't, so we don't have to do all this:
 /*
 const byte  mcp_address=0x20;      // I2C Address of MCP23017 Chip
 const byte  GPIOA=0x12;            // Register Address of Port A
@@ -133,13 +160,14 @@ const byte  IODIRA=0x00;            // IODIRA register
 const byte  IODIRB=0x01;            // IODIRB register 
 */
 
-
-// now prepare to share data over I2C with Leo2.
+// ***
+// *** now prepare to share data over I2C with Leo2.
+// ***
 
 #include "I2C_Anything.h"
 
 //
-// I think this struct is limited to 28 bytes
+// I think this struct is limited to 28 bytes max size
 struct __attribute__ ((packed)) SHARE_DATA {
   //put your variable definitions here for the data you want to send/receive 
   //THIS MUST BE EXACTLY THE SAME ON THE OTHER ARDUINO
@@ -154,8 +182,10 @@ struct __attribute__ ((packed)) SHARE_DATA {
 //give a local name to the blob of shared data
 SHARE_DATA share_data;
 
-//define slave i2c address
-// this would be the address of Leo2
+// ***
+// *** define slave i2c address
+// *** this is the address of Leo2;  there can only be one master on the i2c bus and it is Leo1
+// ***
 #define I2C_SLAVE_ADDRESS 8
 const byte LEO2 = 8;       // i2c address of Leo2, Joystick controller
 
@@ -165,7 +195,14 @@ const byte LEO2 = 8;       // i2c address of Leo2, Joystick controller
 // Mega hat tip and kudos and general warm fuzzies to Arduino community, 
 // a generous & talented bunch of hackers.
 //
+// ***
+// *** if you turn this on you can generate verbose debug msgs using DEBUG_PRINT
+// ***
 //#define DEBUG
+
+// NOTE:  ALWAYS use the F macro to wrap any string literals in Serial print and println statements.  Why?
+//        'cos too many unwrapped literals leads to the dreaded "low memory" message and possibly a bricked duino
+//        upon upload.  You have been warned :-)
 
 #ifdef DEBUG
 #define DEBUG_PRINT(str)    \
@@ -193,7 +230,9 @@ const byte LEO2 = 8;       // i2c address of Leo2, Joystick controller
 #endif
 //
 //
-//    -- PIN ins and outs
+// ***
+// ***    -- PIN ins and outs
+// ***
 //
 // pins D0-D3 are dedicated to USB and I2C.
 // mainboard  lights are on 4 5 6 7
@@ -213,7 +252,11 @@ const int startEngSw = A2;
 const int escKeySw = A3;
 
 // hidSwitch is a safety feature that gets your mouse and kbrd back if Leo1 goes nuts
+// it will stop HID transmission.
 
+// *** 
+// *** EUROBIKE SPECIFIC DATA STRUCTURE
+// ***
 //
 // goto destinations:  nice bike rides.  push a button and teleport to the start point.
 // our pot setting method should allow us to choose among 11 rides.  it would be nice
@@ -245,27 +288,31 @@ char *ridenames[] = { "French Forest",
 int rideCt = 11;
 
 
+// ***
+// *** never used this, place holder for future feature
+// ***
 float showvals[11];     // place holder for one day displaying various values in 7seg
 
 // actually I think a subsequent version would use an LCD backlight panel instead of 7 seg disp.
 // or even a pixel addressable panel with graphics.
 
-//
-//    -- LIGHTS
-//
+// ***
+// ***   -- LIGHTS 
+// ***
 // Leo2 uses 3 generic leds to show the leading edge of each sensor plus a stop light
 // Leo2 uses 4 rainbow leds to show speed
 // Leo1 also has 4 rainbow leds and uses them to echo the speed:
 //    blue is slow, green is normal, yellow is fast, and red is stopped.
-// both Leos should also have some kind of calibration code, a little confirmation display
+// both Leos use their LEDs for a little confirmation display during boot,
 //      so user knows they are alive and sane:  this is done by LEDs and 7 seg.
-// the onboard LED light is not useful after the unit is packaged, so it becomes another
-// panel LED I guess
+// the onboard LED light is hidden after the duino is packaged in a box, so it becomes another
+// panel LED I guess -- it can be doubled to the front panel
  
 const int ledLight = 13;  // this is the built in LED light (debug only)
 
-// Parameters for speed computation
-// we may no longer need these as Leo2 is doing this now.
+// *** SPEED
+// *** Parameters for speed computation
+// *** we may no longer need these as Leo2 is doing this now.
 const int maxRPM = 96;     // that is pedaling all out
 const int minRPM = 20;      // dead slow
 float rpm = 0.0; 
@@ -277,11 +324,12 @@ float potVal;
 int magEnc = 750;
 
 boolean invertSpinDir = 0;    // this only applies to the portable stepper version
-boolean showPotVal = 0;
+boolean showPotVal = 0;       // another future feature
 //
 
 //    -- for the chuck lib
 //       parameters for reading the joystick:
+//    only applies if you want to use the wiichuck as a mouse replacement
   int chuckRange = 40;                // output range of X or Y movement
   int chuckThresh = chuckRange/10;    // resting threshold
   int chuckCentre = chuckRange/2;     // resting position value
@@ -299,8 +347,12 @@ boolean showPotVal = 0;
                                       // actually you don't.  ETS2 has this option.
   boolean realMouse = 0;              // this s/b True if we have a real usb mouse plugged in
                                       // (but is not yet used anywhere)
-
   boolean noTraffic = 1;              // this is an ETS2 settings variable
+
+
+// ***
+// *** HOUSEKEEPING
+// ***
 
   long lastI2C = 0;                   // last time we did an i2c transfer
   long lasTrellis = 0;                // last time we checked the trellis for input
@@ -310,10 +362,22 @@ boolean showPotVal = 0;
 //
 // finally!  done with definitions.  Time for setup.
 //
+// ***
+// ****
+// *****
+// ******
+// ******* MAIN consists of setup() and loop()
+// ******
+// *****
+// ****
+// ***
+//
+//
 
-//
-// MAIN
-//
+// ************************************************************************************************
+// ***
+// *** SETUP
+// ***
                                   
 void setup() {
   
@@ -497,6 +561,10 @@ void setup() {
   
 } 
 
+// ************************************************************************************************
+// ***
+// *** LOOP
+// ***
 
 void loop() {
   
@@ -635,13 +703,11 @@ void loop() {
    }
  
   }
- 
   
   
-
-// -------------------------------------------------------------------------
+// ************************************************************************************************
 // FUNCTIONS
-// -------------------------------------------------------------------------
+// ************************************************************************************************
 
 // high level ETS2 specific functions
 // about those backspaces:  hey, I dunno.  when I do it from the keyboard,
@@ -723,7 +789,7 @@ void goTime(float val) {
   int hours = 3 + 2 * multiplier;
   String hourstr = String(hours);
   Keyboard.write('`');            // enter dev con
-  Keyboard.write(KEY_BACKSPACE);  // why do we have to do this?  delete backquote.
+  Keyboard.write(KEY_BACKSPACE);  // why do we have to do this?  delete backquote.  why???
   delay(50);
   Keyboard.print("g_set_time ");
   Keyboard.print(hourstr);
@@ -774,9 +840,12 @@ void matrixDoneMsg () {
   matrix.writeDisplay();
 }
 
+
 /*
 void victoryRoll() {
-  
+
+// this lights up LEDs attached to the LinkSprite
+
   for (int i = 0; i < 2; i++) {
   mcp.digitalWrite(bluLight2,HIGH);
    delay(100);
@@ -799,6 +868,7 @@ void victoryRoll() {
   
 }
 */
+
 // 
 ////  HID  functions:  key presses, joystick inputs, other axes etc.
 //
@@ -926,6 +996,8 @@ void readTrellis() {
   // now we have to honour the switches.
   // no chording!  we only accept *one switch at a time*
   // last one wins!
+  // selected buttons can be held down for continuous action:  godcam ctrls QWEASD, and ENTER :
+  // see trellisExec
   
   if (trellis.readSwitches()) {
     trellisPress = -1;
@@ -935,56 +1007,32 @@ void readTrellis() {
       if (trellis.justPressed(i)) {
         Serial.print(F("v")); Serial.println(i);
         trellis.setLED(i);
+        if (!trellisDown) {
         trellisPress = i;
+        }
       } 
     // if it was released, turn it off
       if (trellis.justReleased(i)) {
         Serial.print(F("^")); Serial.println(i);
-        if (trellisDown) {
-          trellisUp(i);
-        }
         trellis.clrLED(i);
+        Keyboard.releaseAll();
+        trellisDown = 0;
       }
     }
     // tell the trellis to set the LEDs we requested & exec the appropriate command 
     trellis.writeDisplay();
+    
+    // if we don't still have a key previously pressed then exec the most recent press
     if (trellisPress > -1) {
-    trellisExec();
+    if (!trellisDown) {
+      trellisExec();
+    } 
     }
-  }
-
-
-}
-
-void trellisUp(int i) {
-  
-  switch (i) {
-    case 7:
-      Keyboard.release(KEY_RETURN);
-      break;
-    case 16:
-      Keyboard.release('q');
-      break;
-    case 17:
-      Keyboard.release('w');
-      break;
-    case 18:
-      Keyboard.release('e');
-      break;
-    case 20:
-      Keyboard.release('a');
-      break;
-    case 21:
-      Keyboard.release('s');
-      break;
-    case 22:
-      Keyboard.release('d');
-      break;
+    
   }
   
-  trellisDown = 0;
-  
 }
+
  
 void trellisExec() {
 

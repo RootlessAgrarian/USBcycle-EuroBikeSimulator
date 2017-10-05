@@ -1,7 +1,6 @@
 getduino:	
-		cp /Ume '*autosave*.sii' -exec /bin/rm {} \;
-		sers/de/Work/ARDUINO/devel/PROJECTS/Leo1_beta/Leo1_beta.ino ./arduino
-		cp /Users/de/Work/ARDUINO/devel/PROJECTS/Leo2_beta/Leo2_beta.ino ./arduino
+		cp /Users/de/Work/ARDUINO/devel/PROJECTS/Leo1_Current/Leo1_Current.ino ./arduino
+		cp /Users/de/Work/ARDUINO/devel/PROJECTS/Leo2_Current/Leo2_Current.ino ./arduino
 
 getprof:
 		cp -r /Users/de/Library/Application\ Support/Euro\ Truck\ Simulator\ 2/profiles/4379636C697374 ETS2_profiles
@@ -10,3 +9,11 @@ getprof:
 getmods:
 		cp /ers/de/Library/Application\ Support/Euro\ Truck\ Simulator\ 2/mod/BikeView*.scs ETS2_mods
 
+push:		
+	git push origin master
+
+pull:		
+	git pull origin master
+
+init:
+		git remote add origin https://github.com/RootlessAgrarian/EuroBikeSimulator.git
