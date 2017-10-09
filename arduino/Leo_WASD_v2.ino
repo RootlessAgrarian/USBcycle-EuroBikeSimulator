@@ -5,9 +5,28 @@
 // works with anything that has a rotating part you can attach a magnet to,
 // and a fixed part that you can attach 3 reed switches to.
 //
-// Basic dirt-simple WASD version
+// Basic dirt-simple WASD version:  pedal your way through a WASD game
+//
+// example setups:
+// 1) portable stepper (instrumented) plus mouse or wiichuck
+// 2) portable stepper plus chair (recumbent emulator), mouse or wiichuck (or both)
+// 3) fully instrumented bike, use pedal and steering sensors only, plus mouse or wiichuck
+// 
+// you may have to tweak some of the parameters for your particular setup -- your top
+// pedalling speed might be greater or less than the limit set here, the threshold of 
+// effort where you switch from walk to run might need adjusting to feel natural.
 //
 // WORKING as of April 9 2017, tested with Unity game build.
+// As of Oct 2017, no longer working with Unity game build.  Mysterious results from
+// testing:  
+//     American Truck Sim: yes, works fine
+//     Beginner's Guide: yes
+//     Dear Esther: yes
+//     Dr Langeskov (etc): no
+//     Everything: no
+//     Obduction: yes
+//     OffPeak: no
+//     Sunless Sea: yes
 //
 // USBcycle reads 3 reed switches to monitor rotation and derive 
 // speed and direction.
@@ -135,13 +154,30 @@ WiiChuck chuck = WiiChuck();
 // see datasheet
 PCF8574 PCF_38(0x38);  // add switches to lines  (used as input)
 
+// ***
+// *** definitions for the AS5601 Rotary Hall sensor for steering (an i2c device)
+// ***
+#include <Encoder.h>
+Encoder AS5601enc(18, 19);
+// these values are absolutes, i,e, -90 to 90 on the bars;  but we would like more sensitive steering
+// steerfactor should be settable by a panel switch!
+float steerFactor = .70;
+int minlimRotaryHall = 1000;
+int maxlimRotaryHall = 1980;
+int rangeRotaryHall = maxlimRotaryHall - minlimRotaryHall;
+float centreRotaryHall = minlimRotaryHall + rangeRotaryHall / 2.0;
+int maxRotaryHall = maxlimRotaryHall;
+int minRotaryHall = minlimRotaryHall;
+int steerVal = 0;
+int rawSteerVal = 0;
+
 //
-// NB: Wire, Keyboard and Mouse are stock Ardu libs.  Hirzel is a contrib.
+// NB: Wire, Encoder, Keyboard and Mouse are stock Ardu libs.  Hirzel is a contrib.
 // and so is pfc8574
 //
 
 // pretty debug print function from early stages of project
-//#define DEBUG
+#define DEBUG
 
 #ifdef DEBUG
 #define DEBUG_PRINT(str)    \
@@ -184,10 +220,12 @@ PCF8574 PCF_38(0x38);  // add switches to lines  (used as input)
   long laston[numSensors];
   int lastrpm[numSensors];
   int reeds[numSensors];
-  float maxRPM = 0.0;
-  float rpmCap = 240;
   int lastedge = 0;
   int directionMatrix[numSensors][numSensors];
+  //
+  const int maxRPM = 96;
+  const int minRPM = 20;
+  float rpmCap = 120;
   int spindir;
   int lastdir;
   int timeout;
@@ -218,6 +256,7 @@ PCF8574 PCF_38(0x38);  // add switches to lines  (used as input)
 //   -- WIICHUCK
 //       parameters for reading the wiichuck:
 
+  boolean chuckExists = 0;
   boolean useChuck = 0;               // user settable flag to request chuck input
   int chuckRange = 40;                // output range of X or Y movement
   int chuckThresh = chuckRange/10;    // resting threshold
@@ -230,7 +269,7 @@ PCF8574 PCF_38(0x38);  // add switches to lines  (used as input)
 //   -- GAME CONTROL
 //
 
-
+  long lastWASD = 0;                    // keep track of elap time between keysends
   int footPace = 0;                     // 3 speeds, 0 (slow), 1 (walk), and 2 (run)
   int lastPace = 0;                     // as usual it is transitions that matter
   long lastPaceTime = 0;
@@ -239,23 +278,28 @@ PCF8574 PCF_38(0x38);  // add switches to lines  (used as input)
   float speedAdjust = 0.0;              // factor by which to map rpm to walk vs run
                                         // or in fly mode, mouse wheel setting
                                         // this "gain" factor is set by a pot
-  // 30 rpm is very slow.   60rpm is comfortable walking speed.  120 is very fast.
-  // so let's say 45 to 80 is walking, above 80 is running.  and we can scale by the gainpot.
-  float maxRunSpeed = 180.0;            // I kinda doubt you can run faster than that
-  float runThresh = 160;                // hard wiring this not such a great idea.  we'll set max values
-  float walkThresh = 90;                // and multiply them by the gain pot factor (50 percent is default).
-  boolean slowWalking = 1;                  // below a certain rpm, send out one char per leading edge
-  boolean Stopped = 1;                      // so we can stop doing much of anything when we are motionless
+  // 20 rpm is super slow.  30-50 is leisurely. 50-60rpm is a brisk pedal speed.  
+  // 100 is very fast.  90 is about the most I can keep up for 30 sec or so.
+  // so let's say 25 to 55 is walking, above 55 is running.  
+  // and we can scale by the pot, if we install a pot.  but that implies a readout and... sigh...
+  // we're out of pins.
+  float maxRunSpeed = 100.0;             // I kinda doubt that anyone can pedal faster than this!
+  float runThresh = 55;                  // hard wiring this not such a great idea.  ideally set max values
+  float walkThresh = 20;                 // and multiply them by the gain pot factor (50 percent as the default).
+  boolean slowWalking = 1;               // below a certain rpm, send out just one char per leading edge.
+  boolean Stopped = 1;                   // we can stop doing much of anything when we are motionless.
   int motionTimeout = 2000;              // how long must elapse between edges to conclude that we are stopped?
-  float potVal = 1.0;
-  int runCt = 0;                        // number of run speed loops you need to change up 
-  int walkCt = 0;                       // number of walk speed loops you need to change up
+  float potVal = 1.0;                    // this version doesn't have the pot.
+  int runCt = 0;                         // number of run speed loops you need to change up 
+  int walkCt = 0;                        // number of walk speed loops you need to change up
   uint8_t keyPressed = 0;
   int usbHIDsending = 1;
 
-  boolean invertMouseY = 0;             // need this for intuitive game look-around control
-  boolean invertSpinDir = 0;            // you will need this for recumbent bike emulation
-
+  boolean invertMouseY = 0;              // need this for intuitive game look-around control
+  boolean invertSpinDir = 0;             // you will need this for recumbent bike emulation w/a portable stepper
+  boolean useBikeSteer = 0;              // by default this is off, but you'll want to use bike steering if you have it
+  boolean bikeSteerAvail = 0;
+  
   // (future feature placeholder)
   // we need to calibrate before running, to get valid maxRPM etc.
   // how to prompt user and do calibration?
@@ -264,7 +308,6 @@ PCF8574 PCF_38(0x38);  // add switches to lines  (used as input)
   long calibrateBegin = 0;
   int calTime = 10000;
 
-  boolean chuckExists = 0;
 
 // finally!  done with defs
 
@@ -278,16 +321,16 @@ PCF8574 PCF_38(0x38);  // add switches to lines  (used as input)
                                   
 void setup() {
 
+
   // INIT Serial logger
   //
   Serial.begin(9600);
   delay(100);  
-
-
+  Serial.println(F("INITIALISING..."));
   // 
   // INIT SWITCHES AND LIGHTS
   //
-  
+  Serial.println(F("Initialise Arduino pins"));
   // sensor inputs
   pinMode(pinReed0,INPUT_PULLUP);
   pinMode(pinReed1,INPUT_PULLUP);
@@ -313,26 +356,29 @@ void setup() {
   // *** blink a happy light:  phase 1 OK
   blinky(loSpdLED,6);
 
-  
   //
   // INIT I/O, various? 
   //
+  
+  Serial.println(F("Initialise USB HID libs"));
 
   // Mouse emu, Keyboard emu, and wiichuck if present
   
   Mouse.begin();
-  delay(1);
+  delay(100);
   Keyboard.begin();
-  delay(1);
+  delay(100);
 
-  // join i2c bus as master but only if we see pullup voltage on pins 2 and 3
+  Serial.println(F("Check I2C bus power"));
+
+  // join i2c bus as master... but only if we see pullup voltage on pins 2 and 3
   int d2 = digitalRead(2);
   int d3 = digitalRead(3);
   if (!(d2&d3)) {
     Serial.println(F("OUCH, no I2C bus power."));
-    goCatatonic(hidKillLED);       // most severe, no i2c bus power red disaster light
+    goCatatonic(hidKillLED);       // fatal, no i2c bus power blink red disaster light forever
   }
-  // otherwise I2C is OK
+  // otherwise... I2C is OK yay!
 
   // *** blink a happy light:  phase 2 OK
   blinky(medSpdLED,6);
@@ -341,17 +387,17 @@ void setup() {
   Wire.begin();
   delay(500);
 
-  // first do we have our port expander?  if we don't, we are dead in the water
-  
+  // first, do we have our port expander?  if we don't, we are dead in the water
+  Serial.println(F("Do we have I2C port expander?"));
   bool i2cOK = testI2C(0x38);
-  if (!i2cOK) {goCatatonic(loSpdLED);}   //  most severe:  blink annoying white LED forever
+  if (!i2cOK) {goCatatonic(loSpdLED);}   //  fatal:  blink annoying white LED forever
 
   //
   // since it exists, let's talk to the port expander:  set all lights off
   //
   
   uint8_t value = PCF_38.read8();
-  Serial.print("#38:\t");
+  Serial.print("  #38:\t");
   Serial.println(value);
   value = 255;
   PCF_38.write8(255);
@@ -359,31 +405,52 @@ void setup() {
   // *** blink a happy light to show we are still OK, phase 3 done
   blinky(hiSpdLED,6);
   
-  // do we have a wiichuck?  if we don't, we can still operate with a standalone mouse
-  // we just have to ignore all chuck operations.
-  
+  // do we have a wiichuck?  if we don't, we can still operate with a standard mouse;
+  // we just have to ignore all chuck logic.
+  Serial.println(F("Do we have wii chuck?"));
   i2cOK = testI2C(0x52);
   if (!i2cOK) {
     chuckExists = 0; 
+    Serial.println(F("No WiiChuck Available At This Time."));
   } else {
     chuckExists = 1;
   }
+
+  // do we have a bike rotation encoder, as in the full blown EBS version?  if we do, 
+  // we should have the option to use it!
+// now start up the i2c steering sensor
+
+  Serial.println(F("Do we have rotary Hall effect (steering) sensor?"));
+  
+  i2cOK = testI2C(0x36);
+  if (!i2cOK) {
+    Serial.println(F("No Bike Steering Available At This Time."));
+    bikeSteerAvail = 0;
+  } else {
+    bikeSteerAvail = 1;
+  }
   
   if (chuckExists) {
-  // init nunchuck on i2c bus (this uses Wire)
-  // this presumably does Wire(begin) for us.
-  chuck.begin();
-  chuck.update();
-  delay(1); 
+    Serial.println(F("Initialise wii chuck since we have one"));
+    // init wiichuck on i2c bus (this uses Wire)
+    // this would do the Wire(begin) for us if we hadn't already done it
+    chuck.begin();
+    chuck.update();
+    delay(100); 
+  }
+
+  if (bikeSteerAvail) {
+        Serial.println(F("Initialise rotary steering encoder since we have one"));
+        initRotaryHall();
   }
 
   // INIT direction matrix and history variables
   initTelemetry();
   
-  delay(1000); 
+  delay(500); 
 
-  // *** woo hoo we survived init!  big happy light show:
-  // riffle through expander LEDs to signal successful init
+  // *** woo hoo, we survived init!  big happy light show:
+  // riffle through all expander LEDs to signal successful init
   //
   for (int j = 0; j < 4; j++) {
   for (int i=0; i<8; i++)
@@ -395,10 +462,11 @@ void setup() {
   }
   }
   
+  // last hurrah
   blinky(invSpinLED,6);
   
   // DONE WITH INIT 
-  Serial.println(F("INIT COMPLETE"));
+  Serial.println(F("---------- INIT COMPLETE -----------"));
   
 }
 
@@ -418,8 +486,129 @@ void loop() {
   areWeSending();
 
   // check user switches
+  checkUserSwitches();
+  
+  // read nunchuck and update mouse position as needed
+  // lights will blink (above) if you asked for chuck and it wasn't there
+  if (chuckExists && useChuck) {
+   // Serial.println(F("Check Chuck"));
+   checkChuck();
+  }
+  // the end result of readRotaryHall func call is to set steerVal and rawSteerVal
+  // the end result of steerMouseX is to use rawSteerVal to set mouse movement
+  if (bikeSteerAvail && useBikeSteer) {
+    readRotaryHall();
+    steerMouseX();
+  }
 
-  // cgeck mouse invert mode
+  // read the bike reed switches 0, 1, 2
+  // Serial.print(F("read sensors ... "));
+
+  for (int i = 0; i < numSensors; i++ ) {
+    // Serial.print(i);
+    // Serial.print(F(" ... "));
+    int val = readSensor(i);
+    if (val >= 0) {
+      // only write to LEDs when value changes -- value is -1 for no change.
+      if (val) { 
+        laston[i] = millis();
+        PCF_38.write(3+i, 0) ;
+      } else {
+        lastoff[i] = millis();
+        PCF_38.write(3+i, 1) ;
+      }
+    }
+ 
+  }
+  // Serial.println(F(""));
+  
+  // Calibration place holder
+  // future feature, needs Yet Another Switch (sigh)
+  // are we calibrated?
+  // gives user chance to set RunThresh to their own ability level
+  // during calibration we only read sensors and update rpm, skip the rest of the loop
+  
+  /*
+   if (calibrated < 2) {
+    bool calib = checkCalibration();
+    if (!calib) return;
+  }
+  */
+  
+  // Calibration is over... now DO THE MATH
+  
+  // readSensor has read all 3 sensors, computed direction, computed rpm on sensor 0
+  // and determined last on/off.  now we decide what to do with the numbers.
+
+  // oh dear, the gain pot was actually useful at one time...
+  // how shall we set our threshholds?  for now, set reasonable fixed values
+  //     potVal = analogRead(gainPot) / 1023.0;
+  // we express the pot reading as a percentage...
+  // the normal position was 50 percent or centred, so we'll just adjust the run/walk thresholds
+  // hardwired in the defs.  experience with the EuroBike version suggests 50-60 is a comfy
+  // pace to keep up, above 60 is definitely a sprint.
+  
+  // potVal = .50;
+  // a crude way to do this -- we can do better.
+  
+  long now = millis();
+  int wdelta = now - lastWASD;
+  if (wdelta >= 100) {
+    doWASDoutput(now);
+  }
+    
+  // and we are done w/main loop!  yay!
+  
+}
+ 
+  
+  
+//
+////
+//////------------------------- FUNCTIONS  -----------------------------------------
+////
+//
+
+// 
+////  HID  functions:  key presses, i2c inputs, all the good stuff
+//
+
+void areWeSending () {
+
+  // Kill Switch reads 0 when engaged (kill HID)
+  // but the board is upside down now w/ref to my original layout idea so I'm reversing this sense
+  // so that switches move to the right for On.
+  
+  int val = digitalRead(hidKillSw);
+  
+  //Serial.print("Are We Sending? switch: ");
+  //Serial.println(val);
+
+  // so 0 = true (send HID events) and anything greater is false (don't send) 
+  if (val) {
+    if (usbHIDsending) {
+    //Keyboard.end();
+    //Mouse.end();
+    usbHIDsending = 0;
+    Serial.println(F("HID emulation OFF"));
+    digitalWrite(hidKillLED,HIGH); 
+    }
+    // Serial.println("\nKEYBOARD END");
+  } else { 
+    if (! usbHIDsending) {
+      //Keyboard.begin();
+      //Mouse.begin(); 
+      usbHIDsending = 1;
+      Serial.println(F("HID emulation ON"));
+      digitalWrite(hidKillLED,LOW);
+    }
+  }
+  
+}
+
+
+void checkUserSwitches() {
+  
   // switches are 0 true (input_pullup)
   
   int val = digitalRead(invMsySw);
@@ -466,199 +655,22 @@ void loop() {
   }
   }
 
-  // one day we will check for "request real bike steering"
-  
-   // read nunchuck and update mouse position as needed
-   // lights will blink (above) if you asked for chuck and it wasn't there
-   if (chuckExists & useChuck) {
-   checkChuck();
-   }
-
-// read the bike reed switches
-
-  for (int i = 0; i < numSensors; i++ ) {
-    int val = readSensor(i);
-    if (val >= 0) {
-      // only write to LEDs when value changes -- value is -1 for no change.
-      if (val) { 
-        laston[i] = millis();
-        PCF_38.write(3+i, 0) ;
-      } else {
-        lastoff[i] = millis();
-        PCF_38.write(3+i, 1) ;
-      }
-    }
- 
-  }
-
-  // Calibration place holder
-  // future feature, needs Yet Another Switch (sigh)
-  // are we calibrated?
-  // gives user chance to set RunThresh to their own ability level
-  // during calibration we only read sensors and update rpm, skip the rest of the loop
-  
-  /*
-   if (calibrated < 2) {
-    bool calib = checkCalibration();
-    if (!calib) return;
-  }
-  */
-  
-  // Calibration is over... now DO THE MATH
-  
-  // readSensor has read all 3 sensors, computed direction, computed rpm on sensor 0
-  // and determined last on/off.  now we decide what to do with the numbers.
-
-  // oh dear, this pot was actually useful at one time...
-  // how shall we set our threshholds?  take the default value
-  //     potVal = analogRead(gainPot) / 1023.0;
-  // we express the pot reading as a percentage
-  // the normal position is 50 percent or centred
-  
-  potVal = .50;
-  
-  long now = millis();
-
-  // WASD output
-  // we are in wasdland, so we use absolute rpm (higher than X is run, lower is walk)
-  // and spindir tells us whether to send W or S -- do this every 1/10th sec
-  // we don't do this too often because it's expensive and jittery.
-  
-  if (!(now % 100)) {
-    
-    int slope = average - lastSampleAvg; // neg if slowing down, pos if speeding up
-    int fudge = 0;
-    if (slope >= 0) {
-      fudge = hysFudge;
-    } else {
-      fudge = -hysFudge;
-    }
-    
-    // case 1:  we are walking slower than normal walk speed:  slow walking
-    // this is a special mode:  we issue individual keystrokes (see reed switch code)
-    
-    if ((abs(average) < (walkThresh*potVal + fudge))) {
-      footPace = 0;
-      if (lastPace != footPace) {
-        Keyboard.releaseAll();
-        slowWalking = 1;
-        digitalWrite(loSpdLED,HIGH);
-        digitalWrite(medSpdLED,LOW);
-        digitalWrite(hiSpdLED,LOW);
-        lastPace = footPace;
-        lastPaceTime = now;
-      }
-    }
-    
-    // case 2:  we are walking at normal walk speed, less than run speed
-    // we hold down a key (w if forward and s if back).
-    
-    if ((abs(average) >= (walkThresh*potVal + fudge)) && (abs(average) < (runThresh*potVal + fudge))) {
-      footPace = 1;
-      if (lastPace != footPace) {
-      slowWalking = 0;
-      digitalWrite(loSpdLED,LOW);
-      digitalWrite(medSpdLED,HIGH);
-      digitalWrite(hiSpdLED,LOW);
-      
-      if (lastPace > footPace) {
-        Keyboard.release(KEY_LEFT_SHIFT);   
-      } else {      
-        if (spindir > 0) {
-        PCF_38.write(reverseLED,1);
-        Keyboard.press('w');
-        // Serial.print("w");
-        } else {
-        PCF_38.write(reverseLED,0);
-        // Serial.print("s");
-        Keyboard.press('s');
-        }
-      }
-      lastPace = footPace;
-      lastPaceTime = now;
-      }
-    }
-    
-    // case 3:  we are walking at run speed
-    // so add a shift key to whatever is already going on
-    
-    if (abs(average) >= (runThresh*potVal + fudge)) {
-      footPace = 2;
-      if (lastPace != footPace) {
-      digitalWrite(loSpdLED,LOW);
-      digitalWrite(medSpdLED,LOW);
-      digitalWrite(hiSpdLED,HIGH);
-
-      // if we leapt from Slow to Run without going through Walk... turn on walk key
-      if (!lastPace) {
-        if (spindir > 0) {
-          Keyboard.press('w');
-          PCF_38.write(reverseLED,1);
-        } else {
-          Keyboard.press('s');
-          PCF_38.write(reverseLED,0);
-        }
-      }
-      Keyboard.press(KEY_LEFT_SHIFT);
-      // you cannot see this shift effect in an xterm but video game sees it OK
-
-      lastPace = footPace;
-      lastPaceTime = now;
-      }
-
-    }
-    // record last average that we actually considered
-    lastSampleAvg = average;
-
-  }
-
-  // and we are done w/main loop!
-  
-}
- 
-  
-  
-//
-////
-//////------------------------- FUNCTIONS  -----------------------------------------
-////
-//
-
-// 
-////  HID  functions:  key presses, i2c inputs, all the good stuff
-//
-
-void areWeSending () {
-
-  // Kill Switch reads 0 when engaged (kill HID)
-  // but the board is upside down now w/ref to my original layout idea so I'm reversing this sense
-  // so that switches move to the right for On.
-  
-  int val = digitalRead(hidKillSw);
-  
-  //Serial.print("Are We Sending? switch: ");
-  //Serial.println(val);
-
-  // so 0 = true (send HID events) and anything greater is false (don't send) 
+    // check whether we want to use the wiichuck
+  val = digitalRead(bikeSteerSw);
+  if (val != useBikeSteer) {
   if (val) {
-    if (usbHIDsending) {
-    //Keyboard.end();
-    //Mouse.end();
-    usbHIDsending = 0;
-    Serial.println(F("HID emulation OFF"));
-    digitalWrite(hidKillLED,HIGH); 
+    useBikeSteer = 1;
+    PCF_38.write(bikeSteerLED,0);
+    if (!bikeSteerAvail) {
+      PCF_blinky(bikeSteerLED,4);
     }
-    // Serial.println("\nKEYBOARD END");
+    Serial.println(F("Use Bike Steering"));
   } else {
-    if (! usbHIDsending) {
-      //Keyboard.begin();
-      //Mouse.begin(); 
-      usbHIDsending = 1;
-      Serial.println(F("HID emulation ON"));
-      digitalWrite(hidKillLED,LOW);
-    }
+    useBikeSteer = 0;
+    Serial.println(F("Ignore BikeSteering"));
+    PCF_38.write(bikeSteerLED,1);
   }
-  
+  }
 }
 
 
@@ -723,19 +735,24 @@ void checkChuck () {
       }
     }  
 
-  // move the mouse
- 
+  // move the mouse  
+  // but ONLY IN Y if bike steering is enabled
+  if (bikeSteerAvail && useBikeSteer) {
+    if (yDistance != 0) {
+      Mouse.move(0, -yDistance, 0); 
+      delay(1);
+    }
+  } else { 
     if ((xDistance != 0) || (yDistance != 0)) {
       Mouse.move(xDistance, -yDistance, 0); 
       delay(1);
        Serial.print("Move mouse by X Y : ");
        Serial.print(xDistance);
        Serial.print(" ");
-       Serial.println(yDistance);
-       
-       delay(1);
-      
-    }
+       Serial.println(yDistance);      
+       delay(1);      
+     }
+  }
     
     //  chuckRoll varies bt -170 (roll left) and +170 (roll right)
     //  pushing it past those limits puts you at risk of rollover.
@@ -751,6 +768,36 @@ void checkChuck () {
 
 }
 
+void steerMouseX() {
+
+//  after reading the rotary Hall you have a new rawSteerVal.
+//  map it to a reasonable degree of mouse movement, and move the mouse in X.
+//  but only if HID sending is enabled of course.
+//  this code adapted from Arduino example JoystickMouseControl
+
+  if (!usbHIDsending) {return;}
+  
+  int distance = 0;
+  // parameters for mapping analog sensor to mouse:
+  int range = 48;               // output range of X or Y movement
+  int responseDelay = 5 ;        // response delay of the mouse, in ms
+  int threshold = 2;    // resting threshold 
+  int centre = range / 2;       // resting position value
+
+  // if the output reading is outside from the rest position threshold, use it:
+  int mappedval = map(rawSteerVal, minRotaryHall, maxRotaryHall, 0, range);
+  distance = mappedval - centre;
+  
+  if (abs(distance) < threshold) {
+    distance = 0;
+  }
+
+  // move mouse appropriate distance in X
+  
+  Mouse.move(-distance,0,0);
+  delay(responseDelay);
+  
+}
 
 
 //
@@ -838,17 +885,14 @@ boolean checkCalibration() {
 //
 
 int readSensor(int i) {
-
-    // NOTE that in the first draft of this code, these switches pulled their analog pins HIGH.
-    // In this version, the pins are set INPUT_PULLUP and the switches pull them LOW.
-    // and we have gone from analog to digital so values are 1 vs 0 not a range from 0 to 1023.
-    // 
+    
   int retval = 0;
   String msg = "foo";
   String msg2 = "bar";
   //val = analogRead(i);
+  
   sensorVal = digitalRead(reeds[i]);
-  // reverse sense so 1 is true and 0 is false
+  // reverse sense so 1 is true and 0 is false because these are dragging a pullup input to ground
   sensorVal = !sensorVal;
 
   // 0 now becomes HIGH and HIGH becomes 0, so we can keep our ugly old code.
@@ -906,12 +950,14 @@ int readSensor(int i) {
     // I think one keystroke is not enough here.  should probably be a 100 or 200 ms press.
     // for now I'm leaving it as is, but for gaming it should be improved.
     if ((i == 2) || (i == 0)) {
-    if (slowWalking) {
+    if (slowWalking && usbHIDsending) {
       Keyboard.releaseAll();
         if (spindir > 0) {
           Keyboard.write('w');
+          PCF_38.write(reverseLED,1);
         } else {
-          Keyboard.write('w');
+          Keyboard.write('s');
+          PCF_38.write(reverseLED,0);
         }
      }
     }
@@ -930,7 +976,9 @@ int readSensor(int i) {
     // these may not be the numbers we want but it's a start.  it scales.
     int dt = now - laston[i];
     // how long ago was last rising edge
-    timeout = round((motionTimeout * (1.0 - potVal)) + 100);
+    // timeout = round((motionTimeout * (1.0 - potVal)) + 100);
+    // having no pot in this simple version I'm just going to set it to just under 1 sec
+      timeout = 1500;
     // if it has been timeout ms since most recent rising edge, then we are stopped
     if (!Stopped) {
     if (dt > timeout) { 
@@ -1001,16 +1049,18 @@ void updateRpm(float rpm)  {
       }
       // calculate the average:
       average = total / numReadings;
-      if (average > maxRPM) { maxRPM = average;}
+      // if (average > maxRPM) { maxRPM = average;}
+      // clip the speed to predefined max.  should have a warning light for this.
+      if (average > maxRPM) {average = maxRPM;}
       // how is it different from last avg?  neg if less, pos if more
       aDelta = abs(average) - abs(lastavg);
       float abdelta = abs(aDelta);
+      // this next diagnostic print is a bit noisy
       /*
       Serial.print(rpm);
       Serial.print(" ");
       Serial.println(average);
       */
-     
       // advance to the next position in the array:
       //  advance buffer pointer
       readIndex = readIndex + 1;
@@ -1026,7 +1076,107 @@ void updateRpm(float rpm)  {
 }
 
 
-// some basic startup funcs
+void doWASDoutput(long now) {
+  
+  // WASD output
+  // we are in wasdland, so we use absolute rpm (higher than X is run, lower is walk)
+  // and spindir tells us whether to send W or S -- do this every 1/10th sec
+  // we don't do this too often because it's expensive and jittery.
+
+    if (!usbHIDsending) {return;}
+
+    int slope = average - lastSampleAvg; // neg if slowing down, pos if speeding up
+    int fudge = 0;
+    if (slope >= 0) {
+      fudge = hysFudge;
+    } else {
+      fudge = -hysFudge;
+    }
+    
+    // case 1:  we are walking slower than normal walk speed:  slow walking
+    // this is a special mode:  we issue individual keystrokes (see reed switch code)
+    
+    if ((abs(average) < (walkThresh*potVal + fudge))) {
+      footPace = 0;
+      if (lastPace != footPace) {
+        Keyboard.releaseAll();
+        slowWalking = 1;
+        Serial.print(F("Changing to Slow Walk Mode @ "));
+        Serial.println(average);
+        digitalWrite(loSpdLED,HIGH);
+        digitalWrite(medSpdLED,LOW);
+        digitalWrite(hiSpdLED,LOW);
+        lastPace = footPace;
+        lastPaceTime = now;
+      }
+    }
+    
+    // case 2:  we are walking at normal walk speed, less than run speed
+    // we hold down a key (w if forward and s if back).
+    
+    if ((abs(average) >= (walkThresh*potVal + fudge)) && (abs(average) < (runThresh*potVal + fudge))) {
+      footPace = 1;
+      if (lastPace != footPace) {
+      slowWalking = 0;
+      Serial.print(F("Changing to Regular Walk Mode @ "));
+      Serial.println(average);
+      digitalWrite(loSpdLED,LOW);
+      digitalWrite(medSpdLED,HIGH);
+      digitalWrite(hiSpdLED,LOW);
+      
+      if (lastPace > footPace) {
+        Keyboard.release(KEY_LEFT_SHIFT);   
+      } else {      
+        if (spindir > 0) {
+        PCF_38.write(reverseLED,1);
+        Keyboard.press('w');
+        // Serial.print("w");
+        } else {
+        PCF_38.write(reverseLED,0);
+        // Serial.print("s");
+        Keyboard.press('s');
+        }
+      }
+      lastPace = footPace;
+      lastPaceTime = now;
+      }
+    }
+    
+    // case 3:  we are walking at run speed
+    // so add a shift key to whatever is already going on
+    
+    if (abs(average) >= (runThresh*potVal + fudge)) {
+      footPace = 2;
+      if (lastPace != footPace) {
+      digitalWrite(loSpdLED,LOW);
+      digitalWrite(medSpdLED,LOW);
+      digitalWrite(hiSpdLED,HIGH);
+      Serial.print(F("Changing to Fast Walk (Run) Mode @"));
+      Serial.println(average);
+      // if we leapt from Slow to Run without going through Walk... turn on walk key
+      if (!lastPace) {
+        if (spindir > 0) {
+          Keyboard.press('w');
+          PCF_38.write(reverseLED,1);
+        } else {
+          Keyboard.press('s');
+          PCF_38.write(reverseLED,0);
+        }
+      }
+      Keyboard.press(KEY_LEFT_SHIFT);
+      // you cannot see this shift effect in an xterm but video game sees it OK
+
+      lastPace = footPace;
+      lastPaceTime = now;
+      }
+
+    }
+    // record last average that we actually considered
+    lastSampleAvg = average;
+    lastWASD = millis();
+}
+
+// some basic startup funcs...
 
 boolean testI2C(byte addr) {
   
@@ -1054,6 +1204,91 @@ boolean testI2C(byte addr) {
 
 }
 
+//
+// Stuff stolen from Leo1_Current to set up rotary Hall encoder
+// we set up the Rotary Hall sensor with desired parameters and read one value
+
+void initRotaryHall() {
+
+  // approx range 90-2016
+  // SetupQuadrature resolution to max (2048)
+ 
+  Wire.beginTransmission(0x36);       // transmit to device as5601
+  Wire.write(byte(0x09));             // sets register pointer to ABN 
+  Wire.write(byte(0x0F));             //resolution 2048 
+  byte result = Wire.endTransmission();    // stop transmitting
+  //************************************************************************
+  // Check SetupQuadrature resolution to max (2048) 
+  Wire.beginTransmission(0x36);       // transmit to device as5601
+  Wire.write(byte(0x09));             // sets register pointer to ABN 
+  result = Wire.endTransmission();    // stop transmitting
+  Wire.requestFrom(0x36, 1);          // request 2 bytes from as5601
+  int reading = Wire.read();
+    Serial.print(F("Qres: "));
+// receive high byte 
+  Serial.print(reading,BIN);   
+  Serial.println(F("")); 
+}
+
+void readRotaryHall () {
+  
+// Quadrature enc with the AS5601 Hall position.
+  Wire.beginTransmission(0x36);       // transmit to device as5601
+  Wire.write(byte(0x0E));             // sets register pointer 
+  byte result = Wire.endTransmission();    // stop transmitting
+//
+  Wire.requestFrom(0x36, 2);         // request 2 bytes from as5601
+  int reading = Wire.read();             // receive high byte 
+  reading = reading << 8;            // shift high byte to be high 8 bits
+  reading |= Wire.read();            // receive low byte as lower 8 bits
+  // Serial.print(F("First RHall angle: "));
+  rawSteerVal = reading/2;  
+
+  // clamp steering input within sensible limits
+  if (rawSteerVal > maxRotaryHall) {
+    rawSteerVal = maxRotaryHall;
+  }
+  if (rawSteerVal < minRotaryHall) {
+    rawSteerVal = minRotaryHall;
+  }
+  
+  steerVal = map(rawSteerVal,minRotaryHall,maxRotaryHall,-180,180);
+  // Serial.print(F("RAW Steer: ")); Serial.print(rawSteerVal);
+  // Serial.print(F("  JOY Steer: ")); Serial.println(steerVal);
+  
+  //Serial.print(F("  Status: "));        // remove // if like to display the bits
+  Wire.beginTransmission(0x36);       // transmit to device as5601
+  Wire.write(byte(0x0b));             // sets register pointer 
+  result = Wire.endTransmission();    // stop transmitting
+
+  Wire.requestFrom(0x36, 1 );         // request 1 bytes from as5601
+  reading = Wire.read();              // receive high byte
+  //Serial.print(reading, BIN);       // remove // if like to display the bits
+  
+  if (bitRead(reading, 5)!=1) { Serial.print(F(" Status: ")); 
+  if (bitRead(reading, 4)==1) Serial.println(F("too high "));
+  if (bitRead(reading, 3)==1) Serial.println(F("too low "));}
+  
+   //************************************************************************
+// AGC  ( we don't need the AGC)
+/*  
+  Serial.print(F("AGC: "));
+  Wire.beginTransmission(0x36);       // transmit to device as5601
+  Wire.write(byte(0x1a));             // sets register pointer 
+  result = Wire.endTransmission();    // stop transmitting
+
+  Wire.requestFrom(0x36, 1);          // request 1 bytes from as5601
+  reading = Wire.read();              // receive high byte
+  Serial.print(reading, DEC);             
+  Serial.println(F(""));
+ //************************************************************************
+*/
+
+}
+
+//
+//  basic LED signalling
+//
 
 void blinky(int which, int times) {
   for (int i = 0; i < times; i++) {
