@@ -5,57 +5,27 @@
 // works with anything that has a rotating part you can attach a magnet to,
 // and a fixed part that you can attach 3 reed switches to.
 //
-// Basic dirt-simple WASD version:  pedal your way through a WASD game
+// This is a stripped down diagnostic based on the simple WASD version.
+// It will simply report values to the IDE log output, without actually sending stuff
+// to the host computer.  So the USB HID switch is instead used to switch it
+// between a slow and a fast clock.  The slow clock updates every 1/2 sec so 
+// you don't get overwhelmed by the output;  this is useful for checking steering
+// and brakes and reed switch.  The fast clock runs closer to the normal controller 
+// speed and is more useful for checking RPM calculation.
 //
-// example setups:
-// 1) portable stepper (instrumented) plus mouse or wiichuck
-// 2) portable stepper plus chair (recumbent emulator), mouse or wiichuck (or both)
-// 3) fully instrumented bike, use pedal and steering sensors only, plus mouse or wiichuck
-// 
-// you may have to tweak some of the parameters for your particular setup -- your top
-// pedalling speed might be greater or less than the limit set here, the threshold of 
-// effort where you switch from walk to run might need adjusting to feel natural.
-//
-// WORKING as of April 9 2017, tested with Unity game build.
-// As of Oct 2017, wii/mouse no longer working with Unity game build.  Mysterious results from
-// testing:  
-//     American Truck Sim: yes, works fine
-//     Beginner's Guide: yes
-//     Dear Esther: yes
-//     Dr Langeskov (etc): no  (a Unity game)
-//     Everything: no  (a Unity game)
-//     Obduction: yes
-//     OffPeak: no  (a Unity game)
-//     Sunless Sea: yes
-// Reported to Unity Answers Oct 9 2017
+// This diagnostic will be useful if you want to see the actual raw values of your 
+// encoders, verify that your reed switches are opening and closing, etc.  It does
+// not, however, emit any USB output.  To debug that side of things, you'll need to
+// throw some print statements into the actual Leo_WASD code.
 //
 // USBcycle reads 3 reed switches to monitor rotation and derive 
-// speed and direction. see
-// https://create.arduino.cc/projecthub/Tazling/usbcycle-ride-through-your-virtual-world-8ff961
+// speed and direction.
 // This version uses a single Leonardo as a keyboard/mouse for WASD game control.
 // This version supports ONLY KEYBOARD/MOUSE functions: NO JOYSTICK EMULATION 
 // For full Kbrd/Mouse/Joystick emulation see the EuroBike capable version:
 // Leo1_Current.ino and Leo2_Current.ino
 //
 // First release version (github) Oct 2017
-//
-// notes on first CrashDrive test Oct 20 2017
-// CrashDrive control physics is quite different from WASD and should probably be a whole different algorithm.
-// the significant difference is that CrashDrive control is really done by "tapping" or intermittent key pressing.
-// if you hold down the Fwd key in CrashDrive, you accelerate.  to maintain a steady speed you have to press and
-// release, press and release.  same with steering, you tap-tap rapidly, maybe a half second, quarter second
-// of keypress then back off.  seems like the algorithm for steering should be something like:
-// if (out of deadzone but < next thresh) then keypress left/right arrow .250 sec (every time you check it)
-// if (past next thresh) then hold down left/right arrow until back in zone A again
-// if neutral, do nothing.  or we might just make it hair-trigger, to make little twitchy steering moves easier.
-// and for fwd/reverse --
-// if starting to move, press fwd/rev key.  now Moving.
-// if Moving, if lastRPM < thisRPM then keep holding down key.
-// if lastRPM > thisRPM (slowing down) then let go of key
-// this will take a while to work out, but it is quite different from wasd games where holding down the fwd
-// key moves you at a *fixed* speed.  it is more like ETS2 actually except that the only 2 throttle settings
-// are MASH and BACKOFF :-)  then we could still have an RPM threshold at which we hit TURBO.
-//
 //
 ////-------------------------------------------------------------------
 //
@@ -191,7 +161,9 @@ int maxRotaryHall = maxlimRotaryHall;
 int minRotaryHall = minlimRotaryHall;
 int steerVal = 0;
 int rawSteerVal = 0;
-
+// does this encoder drift over time?  centre doesn't seem to be where it was 6 months ago...
+// centre position on bike bars now seems to be Joystick value -57 or so.  must verify with 
+// ETS2 version.
 //
 // NB: Wire, Encoder, Keyboard and Mouse are stock Ardu libs.  Hirzel is a contrib.
 // and so is pfc8574
@@ -203,23 +175,23 @@ int rawSteerVal = 0;
 #ifdef DEBUG
 #define DEBUG_PRINT(str)    \
    Serial.print(millis());     \ 
-   Serial.print(": ");    \
+   Serial.print(F(": "));    \
    Serial.print(__FUNCTION__);     \
-   Serial.print(':');      \
+   Serial.print(F(":"));      \
    Serial.print(__LINE__);     \
-   Serial.print(' ');      \
+   Serial.print(F(" "));      \
    Serial.print(str); \
-   Serial.print(" "); \
+   Serial.print(F(" ")); \
    Serial.print(invertMouseY); \
-   Serial.print(" "); \
+   Serial.print(F(" ")); \
    Serial.print(invertSpinDir); \
-   Serial.print(" "); \
+   Serial.print(F(" ")); \
    Serial.print(average); \
-   Serial.print(" "); \
+   Serial.print(F(" ")); \
    Serial.print(walkThresh); \
-   Serial.print(" "); \
+   Serial.print(F(" ")); \
    Serial.print(runThresh); \
-   Serial.print(" "); \
+   Serial.print(F(" ")); \
    Serial.println(potVal);
 #else
 #define DEBUG_PRINT(str)
@@ -305,7 +277,7 @@ int rawSteerVal = 0;
   // and we can scale by the pot, if we install a pot.  but that implies a readout and... sigh...
   // we're out of pins.
   float maxRunSpeed = 100.0;             // I kinda doubt that anyone can pedal faster than this!
-  float runThresh = 40;                  // hard wiring this not such a great idea.  ideally set max values
+  float runThresh = 55;                  // hard wiring this not such a great idea.  ideally set max values
   float walkThresh = 20;                 // and multiply them by the gain pot factor (50 percent as the default).
   boolean slowWalking = 1;               // below a certain rpm, send out just one char per leading edge.
   boolean Stopped = 1;                   // we can stop doing much of anything when we are motionless.
@@ -322,7 +294,6 @@ int rawSteerVal = 0;
   boolean useBikeSteer = 0;              // by default this is off, but you'll want to use bike steering if you have it
   boolean bikeSteerAvail = 0;            // if useBikeSteer selected but not available, blinky at startup.
   
-  // -----------------------------------------------------------------------------------------------------------------
   boolean crashDriveHack = 1;             // an embarrassing hack to make this ctrlr work with CrashDrive's oddball controls
                                           // this requires real bike to use your brake lever
                                           // Crash Drive does not use mouse at all!
@@ -330,11 +301,10 @@ int rawSteerVal = 0;
                                           // space bar = brake, shift/ctrl = turbo drive, Return = horn/fire
                                           // NOTE that Crash Drive will not work w/o a network connection!
                                           // also note we could do with yet another switch to set this option (grrr)
-  boolean turnLeft = 0;                   // these 3 bools are all crashdrive related
-  boolean turnRight = 0; 
+  boolean turnLeft = 0;                   // crash drive state switches
+  boolean turnRight = 0;                  // you actually need this kind of flag for all the keypresses
   boolean brakesOn = 0;
-  // -----------------------------------------------------------------------------------------------------------------
-                                       
+                                          
   int brakeVal = 0;
   int lastBrake = 0;
   int brakeNoise = 20;
@@ -426,8 +396,7 @@ void setup() {
     goCatatonic(hidKillLED);       // fatal, no i2c bus power blink red disaster light forever
   }
   // otherwise... I2C is OK yay!
-  Serial.println(F("I2C bus power is OK..."));
-  
+
   // *** blink a happy light:  phase 2 OK
   blinky(medSpdLED,6);
     
@@ -445,7 +414,7 @@ void setup() {
   //
   
   uint8_t value = PCF_38.read8();
-  Serial.print("  #38:\t");
+  Serial.print(F("  #38:\t"));
   Serial.println(value);
   value = 255;
   PCF_38.write8(255);
@@ -516,11 +485,6 @@ void setup() {
   // DONE WITH INIT 
   Serial.println(F("---------- INIT COMPLETE -----------"));
   
-  // there should be a switch for this!
-  if (crashDriveHack) {
-    Serial.println(F("Crash Drive Hack invoked!"));
-  }
-  
 }
 
 //
@@ -532,19 +496,30 @@ void setup() {
 void loop() {
   
 
-  // if hidKill switch is thrown, gimme my keyboard back.
-  // this is important in case wiichuck goes nuts or code is bad:
-  // having a demonically possessed kbrd and/or mouse makes it hard to recover.
- 
-  areWeSending();
-
+  // if hidKill switch is thrown, put loop in fast mode.  if not thrown, leave in slo mo.
+  long now = millis();
+  int wdelta = now - lastWASD;
+  int interval = 250;
+  
   // check user switches
   checkUserSwitches();
+
+  if (usbHIDsending) {
+    // slow clock
+    interval = 250;
+  } else {
+    // fast clock
+    interval = 25;
+  }
+
+  if (wdelta <= interval) {return;}
+
+  Serial.println("----------------------------------------------------------------------------------------------");
   
   // read nunchuck and update mouse position as needed
   // lights will blink (above) if you asked for chuck and it wasn't there
   if (chuckExists && useChuck) {
-   // Serial.println(F("Check Chuck"));
+   Serial.println(F("Check Chuck"));
    checkChuck();
   }
   // the end result of readRotaryHall func call is to set steerVal and rawSteerVal
@@ -556,13 +531,14 @@ void loop() {
   }
 
   // read the bike reed switches 0, 1, 2
-  // Serial.print(F("read sensors ... "));
+  Serial.print(F("read sensors ... "));
 
   for (int i = 0; i < numSensors; i++ ) {
-    // Serial.print(i);
-    // Serial.print(F(" ... "));
+
     int val = readSensor(i);
-    if (val >= 0) {
+//   Serial.print(val);
+     Serial.print(F(" ... "));
+    if (val >= 0) {        
       // only write to LEDs when value changes -- value is -1 for no change.
       if (val) { 
         laston[i] = millis();
@@ -574,7 +550,7 @@ void loop() {
     }
  
   }
-  // Serial.println(F(""));
+  Serial.println(F(""));
   
   // Calibration place holder
   // future feature, needs Yet Another Switch (sigh)
@@ -588,29 +564,6 @@ void loop() {
     if (!calib) return;
   }
   */
-  
-  // Calibration is over... now DO THE MATH
-  
-  // readSensor has read all 3 sensors, computed direction, computed rpm on sensor 0
-  // and determined last on/off.  now we decide what to do with the numbers.
-
-  // -------------------------------------------------------------------------
-  // oh dear, the gain pot was actually useful at one time...
-  // how shall we set our threshholds?  for now, set reasonable fixed values
-  //     potVal = analogRead(gainPot) / 1023.0;
-  // we express the pot reading as a percentage...
-  // the normal position was 50 percent or centred, so we'll just adjust the run/walk thresholds
-  // hardwired in the defs.  experience with the EuroBike version suggests 50-60 is a comfy
-  // pace to keep up, above 60 is definitely a sprint.
-  
-  // potVal = .50;
-  // a crude way to do this -- we can do better.
-  //---------------------------------------------------------------------------
-
-
-  // if we're playing CrashDrive then we'll use the bike brake to send Spacebar (Brake)
-  // to the game.  checkBrake sets brakeVal...
-  // this maybe should not be done so often, will have to try it and see.
   
   if (crashDriveHack && bikeSteerAvail && useBikeSteer) {
     
@@ -626,24 +579,23 @@ void loop() {
     if ((brakeVal - brakeMin) <= brakeNoise) {
       brakeVal = brakeMin;
       if (brakesOn) {
-      Serial.println(F("Brakes OFF"));
-      Keyboard.release(32);
+      Serial.println("Brakes OFF (would release SPACE key)");
       brakesOn = 0;
       }
     } else {
-      int newval = map(brakeVal,brakeMin,brakeMax,0,255);
       if (!brakesOn) {
-      Serial.println(F("BRAKES ON!"));
-      Keyboard.press(32);
+      Serial.println("Brakes ON (would press SPACE key)");
       brakesOn = 1;
       }
+      int newval = map(brakeVal,brakeMin,brakeMax,0,255);
+      Serial.print(F("    In Joystick Mode, brake value mapped to: "));
+      Serial.println(newval);
     }
   }
   
   }
   
-  long now = millis();
-  int wdelta = now - lastWASD;
+
   if (wdelta >= 100) {
     doWASDoutput(now);
   }
@@ -681,7 +633,7 @@ void areWeSending () {
     //Keyboard.end();
     //Mouse.end();
     usbHIDsending = 0;
-    Serial.println(F("HID emulation OFF"));
+    Serial.println(F("**** High Speed Diagnostic Readout"));
     digitalWrite(hidKillLED,HIGH); 
     }
     // Serial.println("\nKEYBOARD END");
@@ -690,7 +642,7 @@ void areWeSending () {
       //Keyboard.begin();
       //Mouse.begin(); 
       usbHIDsending = 1;
-      Serial.println(F("HID emulation ON"));
+      Serial.println(F("**** Low Speed Diagnostic Readout"));
       digitalWrite(hidKillLED,LOW);
     }
   }
@@ -737,11 +689,12 @@ void checkUserSwitches() {
     PCF_38.write(wiiChuckLED,0);
     if (!chuckExists) {
       PCF_blinky(wiiChuckLED,4);
+      Serial.println("User requested WiiChuck but not available");
     }
-    Serial.println(F("Use WiiChuck"));
+    Serial.println(F("Using avilable WiiChuck"));
   } else {
     useChuck = 0;
-    Serial.println(F("Ignore WiiChuck"));
+    Serial.println(F("Ignoring available WiiChuck"));
     PCF_38.write(wiiChuckLED,1);
   }
   }
@@ -753,16 +706,16 @@ void checkUserSwitches() {
     useBikeSteer = 1;
     PCF_38.write(bikeSteerLED,0);
     if (!bikeSteerAvail) {
+      Serial.println("User requested Bike Steering but not available");
       PCF_blinky(bikeSteerLED,4);
     }
-    Serial.println(F("Use Bike Steering"));
+    Serial.println(F("Use available Bike Steering"));
   } else {
     useBikeSteer = 0;
-    Serial.println(F("Ignore BikeSteering"));
+    Serial.println(F("Ignore available BikeSteering"));
     PCF_38.write(bikeSteerLED,1);
   }
   }
-
 }
 
 
@@ -774,10 +727,6 @@ void checkChuck () {
   // Serial.println("Check Chuck!");
   // if HID is disabled, do nothing.
   
-  if (!usbHIDsending) {
-    return;
-  }
-  
   // Serial.println("Check Chuck Time");
   // check chuck approx on multiples of 20 ms
   long now = millis();
@@ -788,25 +737,33 @@ void checkChuck () {
   lastChuck = now;
   chuck.update();
 
-  //Serial.println("Get Chuck Data!");
+  Serial.println("Get Chuck Data!");
   // read chuck data
   // nunchuck_get_data();
 
-  //Serial.println("Get Button data");
+  Serial.println("Get Button data");
   //right and left click control
     int leftState = chuck.buttonC;
-    if (leftState) Mouse.press(MOUSE_LEFT); else Mouse.release(MOUSE_LEFT);
+    if (leftState) {
+      Serial.println("Chuck Button C pressed:  press Mouse Left");
+    } else {
+      Serial.println("Chuck Button C not pressed:  release Mouse Left");
+    }
     int rightState = chuck.buttonZ;
     // if (rightState) Mouse.press(MOUSE_RIGHT); else Mouse.release(MOUSE_RIGHT);
     // for now we will make right button our Jump key in wasd mode
     // and you can map Space to Brake in ETS2 and get a brake action
-    if (rightState) Keyboard.press(' '); else Keyboard.release(' ');
+    if (leftState) {
+      Serial.println("Chuck Button Z pressed:  press SPACE");
+    } else {
+      Serial.println("Chuck Button Z not pressed:  release SPACE");
+    }
     
-  //Serial.println("Get Axis data");
+    Serial.println("Get Axis data");
   // read the x axis
     int xReading = chuck.joyX;
-    // Serial.print("Chuck X: ");
-    // Serial.println(xReading);
+    Serial.print(F("Chuck X: "));
+    Serial.println(xReading);
     xReading = map(xReading, 38, 232, 0, chuckRange);
     int xDistance = xReading - chuckCentre;
     if (abs(xDistance) < chuckThresh) {
@@ -815,8 +772,8 @@ void checkChuck () {
  
   // read the y axis
     int yReading = chuck.joyY;
-    // Serial.print("Chuck Y: ");
-    // Serial.println(yReading);
+    Serial.print(F("Chuck Y: "));
+    Serial.println(yReading);
     yReading = map(yReading, 38, 232, 0, chuckRange);
     int yDistance = yReading - chuckCentre;
     if (abs(yDistance) < chuckThresh) {
@@ -831,16 +788,16 @@ void checkChuck () {
   // but ONLY IN Y if bike steering is enabled
   if (bikeSteerAvail && useBikeSteer) {
     if (yDistance != 0) {
-      Mouse.move(0, -yDistance, 0); 
+      Serial.print(F("Chuck would move mouse in Y only, because Bike Steer is on: "));
+      Serial.println(-yDistance);
       delay(1);
     }
   } else { 
     if ((xDistance != 0) || (yDistance != 0)) {
-      Mouse.move(xDistance, -yDistance, 0); 
-      delay(1);
-       Serial.print("Move mouse by X Y : ");
+       delay(1);
+       Serial.print(F("Chuck would Move mouse by X Y : "));
        Serial.print(xDistance);
-       Serial.print(" ");
+       Serial.print(F(" "));
        Serial.println(yDistance);      
        delay(1);      
      }
@@ -849,6 +806,8 @@ void checkChuck () {
     //  chuckRoll varies bt -170 (roll left) and +170 (roll right)
     //  pushing it past those limits puts you at risk of rollover.
     chuckRoll = chuck.readRoll();
+    Serial.print(F("Read chuckRoll "));
+    Serial.println(chuckRoll);
     // if you get a sudden wild swing in value from one extreme to the other,
     // ignore it.  max would be 340.  320 should be adequate to detect.
     if (abs(lastRoll - chuckRoll) > 320) {
@@ -864,9 +823,11 @@ void checkChuck () {
 void checkBrake() {
 
   lastBrake = brakeVal;
+  Serial.print("Checking brake sensor...  raw value: ");
 
   // turn raw jittery value into a somewhat less bouncy average
   int rawval = analogRead(brakePin);
+  Serial.println(rawval);
   brakeTot = brakeTot - brakeReads[brakeReadPtr];
   brakeReads[brakeReadPtr] = rawval;
   brakeTot = brakeTot + brakeReads[brakeReadPtr];
@@ -875,16 +836,17 @@ void checkBrake() {
     brakeReadPtr = 0;
   }
   brakeAvg = brakeTot / numBrakeReads;
-  // Serial.print("Brake Average bin ");  Serial.print(numBrakeReads);
-  // Serial.print("  :  ");Serial.println(brakeAvg);
+  Serial.print(F("Brake Average over last "));  Serial.print(numBrakeReads);
+  Serial.print(F(" reads  :  "));Serial.println(brakeAvg);
 
   int val = brakeAvg;
   
   // if more than Noise from last value, recognise a change, update official value
   // this is so noisy that it mucks up the log.
   if (abs(val - brakeVal) > brakeNoise) {
-//    Serial.print("Last Brake: "); Serial.print(brakeVal);
-//    Serial.print("    New Brake: "); Serial.println(val);
+    Serial.print(F("Change greater than noise thresh ")); Serial.println(brakeNoise);
+    Serial.print(F("Last Brake: ")); Serial.print(brakeVal);
+    Serial.print(F("    New Brake: ")); Serial.println(val);
     brakeVal = val;
  //   Serial.print("  Set LastBrake to "); Serial.print(lastBrake);
  //   Serial.print("  Set BrakeVal to "); Serial.println(brakeVal);
@@ -901,69 +863,50 @@ void steerMouseX() {
 //  but only if HID sending is enabled of course.
 //  this code adapted from Arduino example JoystickMouseControl
 
-  if (!usbHIDsending) {return;}
-  
   int distance = 0;
   // parameters for mapping analog sensor to mouse:
   int range = 48;               // output range of X or Y movement
   int responseDelay = 5 ;        // response delay of the mouse, in ms
-  int threshold = 6;    // resting threshold 
+  int threshold = 4;    // resting threshold 
   int centre = range / 2;       // resting position value
 
   // if the output reading is outside from the rest position threshold, use it:
   int mappedval = map(rawSteerVal, minRotaryHall, maxRotaryHall, 0, range);
-  distance = mappedval - centre;
-  
-  if (abs(distance) < threshold) {
-    distance = 0;
-    if (crashDriveHack && (turnLeft || turnRight)) {
- //   Serial.println(F("CD2 neutral steering, release left and right arrow"));
-    if (turnLeft) {
-      Serial.println(F("CD2 Was turning left, now neutral, release left arrow!"));
-      Keyboard.release(KEY_LEFT_ARROW);
-      turnLeft = 0;
-    }
-    if (turnRight) {
-      Serial.println(F("CD2 Was turning right, now neutral, release right arrow!"));
-      Keyboard.release(KEY_RIGHT_ARROW);
-      turnRight = 0;
-    }
-    }
-    return;
-  }
-  
-  /*
-  Serial.println(F("Distance gt threshold, make a turn"));
   Serial.print(F("Map raw steer val ")); Serial.print(rawSteerVal); 
   Serial.print(F(" range ")); Serial.print(minRotaryHall); Serial.print(F(" - ")); Serial.print(maxRotaryHall); 
   Serial.print(F("  to mapped value range 0 - "));  Serial.print(range);  Serial.print(F(" -> ")); 
   Serial.println(mappedval);
-  */
   
-  distance = mappedval - centre;             
+  distance = mappedval - centre;
+  Serial.print(F("mappedval distance from centre val ")); Serial.print(centre); Serial.print(F(" is ")); Serial.println(distance);
   
-  // Serial.print(F("mappedval distance from centre val ")); Serial.print(centre); Serial.print(F(" is ")); Serial.println(distance);
+  if (abs(distance) <= threshold) {
+    Serial.print(F(" < thresh "));  Serial.println(threshold);
+    distance = 0;
+    if (crashDriveHack && (turnLeft || turnRight)) {
+    Serial.println(F("Crash Drive Mode:  stop steering, release arrow keys"));
+    turnLeft = 0;
+    turnRight = 0;
+    }
+    return;
+  }
+  
+  Serial.print(F(" > thresh ")); Serial.println(threshold);
   
   // move mouse appropriate distance in X
   // OR if in special CrashDrive mode, press left and right arrows
 
   if (crashDriveHack) {
-    if (distance > 0) {
-      if (!turnLeft) {
-      Serial.println(F("CD2 start turn left, left arrow"));
-      Keyboard.press(KEY_LEFT_ARROW);
+    if ((distance < 0) && !turnLeft) {
+      Serial.println("Crash Drive Mode:  start steer Left, press Left Arrow");
       turnLeft = 1;
-      turnRight = 0;
-      }
-    } else if (!turnRight) {
-      Serial.println(F("CD2 start turn right, right arrow"));
-      Keyboard.press(KEY_RIGHT_ARROW);
+    } else if ((distance > 0) && !turnRight) {
+      Serial.println("Crash Drive Mode:  start steer Right, press Right Arrow");
       turnRight = 1;
-      turnLeft = 0;
     }
   } else {
-    Mouse.move(-distance,0,0);
-    delay(responseDelay);
+    Serial.print(F("Mouse X steering: "));
+    Serial.println(-distance);
   }
   
 }
@@ -997,8 +940,8 @@ void initTelemetry () {
 }
 
 void zeroBoxcar (int i) {
-  //Serial.print("ZERO BOXCAR:  ");
-  //Serial.println(i);
+  Serial.print(F("ZERO BOXCAR:  "));
+  Serial.println(i);
   for (int thisReading = 0; thisReading < numReadings; thisReading++) {
     readings[i][thisReading] = 0;
   }
@@ -1061,8 +1004,11 @@ int readSensor(int i) {
   //val = analogRead(i);
   
   sensorVal = digitalRead(reeds[i]);
+  Serial.print(i);
+  Serial.print(F(" = "));
   // reverse sense so 1 is true and 0 is false because these are dragging a pullup input to ground
   sensorVal = !sensorVal;
+  Serial.print(sensorVal);
 
   // 0 now becomes HIGH and HIGH becomes 0, so we can keep our ugly old code.
 
@@ -1120,26 +1066,12 @@ int readSensor(int i) {
     // for now I'm leaving it as is, but for gaming it should be improved.
     if ((i == 2) || (i == 0)) {
     if (slowWalking && usbHIDsending) {
-      Keyboard.releaseAll();
-      restoreState();
-
+        Serial.println(F("Entering slow walk, first release all keys"));
         if (spindir > 0) {
-          if (crashDriveHack) {
-            Keyboard.press(KEY_UP_ARROW);
-            delay(20);
-            Keyboard.release(KEY_UP_ARROW);
-          } else {
-            Keyboard.write('w');
-          }
+          Serial.print(F("Would write one 'w' to kbrd"));
           PCF_38.write(reverseLED,1);
         } else {
-          if (crashDriveHack) {
-            Keyboard.press(KEY_DOWN_ARROW);
-            delay(20);
-            Keyboard.release(KEY_DOWN_ARROW);
-          } else {
-            Keyboard.write('s');
-          }
+          Serial.print(F("Would write one 's' to kbrd"));
           PCF_38.write(reverseLED,0);
         }
      }
@@ -1180,7 +1112,7 @@ int readSensor(int i) {
 
 
 void stopTheWorld(int i) {
-    
+
       // set Stopped flag and clean up other details
       float rpm = 0.0;
       average = 0;
@@ -1204,16 +1136,9 @@ void stopTheWorld(int i) {
       Stopped = 1;
       slowWalking = 1;
       PCF_38.write(stopLED,0);
-      Keyboard.releaseAll();
-      restoreState();
+      Serial.println("Release all keyboard keys -- not necessarily a good idea");
       }
       
-}
-
-void restoreState() {
-      if (brakesOn) {Keyboard.press(32);}
-      if (turnRight) {Keyboard.press(KEY_RIGHT_ARROW);}
-      if (turnLeft) {Keyboard.press(KEY_LEFT_ARROW);}
 }
 
 // updateRPM -- do boxcar smoothing of measured RPM and set global val "average"
@@ -1246,11 +1171,10 @@ void updateRpm(float rpm)  {
       aDelta = abs(average) - abs(lastavg);
       float abdelta = abs(aDelta);
       // this next diagnostic print is a bit noisy
-      /*
+      Serial.print(F("UPDATE RPM:  latest: "));
       Serial.print(rpm);
-      Serial.print(" ");
+      Serial.print(F("   average: "));
       Serial.println(average);
-      */
       // advance to the next position in the array:
       //  advance buffer pointer
       readIndex = readIndex + 1;
@@ -1273,7 +1197,7 @@ void doWASDoutput(long now) {
   // and spindir tells us whether to send W or S -- do this every 1/10th sec
   // we don't do this too often because it's expensive and jittery.
 
-    if (!usbHIDsending) {return;}
+    Serial.println("Do WASD output");
 
     int slope = average - lastSampleAvg; // neg if slowing down, pos if speeding up
     int fudge = 0;
@@ -1289,8 +1213,7 @@ void doWASDoutput(long now) {
     if ((abs(average) < (walkThresh*potVal + fudge))) {
       footPace = 0;
       if (lastPace != footPace) {
-        Keyboard.releaseAll();
-        restoreState();
+        Serial.println(F("Slow walk:  release all keys"));
         slowWalking = 1;
         Serial.print(F("Changing to Slow Walk Mode @ "));
         Serial.println(average);
@@ -1316,33 +1239,28 @@ void doWASDoutput(long now) {
         digitalWrite(loSpdLED,LOW);
         digitalWrite(medSpdLED,HIGH);
         digitalWrite(hiSpdLED,LOW);
-      // if we are slowing down from a run, release the shift;  if we are
-      // speeding up from a tentative tapping walk, hold down the direction key
+      
       if (lastPace > footPace) {
-        Keyboard.release(KEY_LEFT_SHIFT);   
+        Serial.println("If last pace was faster than walk, release shift key");
       } else {      
         if (spindir > 0) {
           PCF_38.write(reverseLED,1);
           if (crashDriveHack) {
-            Serial.println(F("CD2 FORWARD up_arrow ON"));
-            Keyboard.press(KEY_UP_ARROW);
+            Serial.println("Crash Drive Mode:  press Up Arrow");
           } else {
-            Keyboard.press('w');
-              // Serial.print("w");
+            Serial.println("Press w key");
           }
         } else {
           PCF_38.write(reverseLED,0);
-          // Serial.print("s");
           if (crashDriveHack) {
-            Serial.println(F("CD2 REVERSE dn_arrow ON"));
-            Keyboard.press(KEY_DOWN_ARROW);
+            Serial.println("Crash Drive Mode:  press Down Arrow");
           } else {
-            Keyboard.press('s');
+            Serial.println("Press s key");
           }
         }
-      }
       lastPace = footPace;
       lastPaceTime = now;
+      }
       }
     }
     
@@ -1357,31 +1275,25 @@ void doWASDoutput(long now) {
       digitalWrite(hiSpdLED,HIGH);
       Serial.print(F("Changing to Fast Walk (Run) Mode @"));
       Serial.println(average);
-      // if we leapt from Slow to Run without going through Walk... turn on walk key first
-      // I doubt this could ever happen (how fast can you spin up your trainer?) 
-      // with a reasonable config, but if someone set their pace boundaries 
-      // very narrowly spaced, it might.
+      // if we leapt from Slow to Run without going through Walk... turn on walk key
       if (!lastPace) {
         if (spindir > 0) {
           PCF_38.write(reverseLED,1);
           if (crashDriveHack) {
-            Keyboard.press(KEY_UP_ARROW);
+            Serial.println("Crash Drive Mode:  press Up Arrow");
           } else {
-            Keyboard.press('w');
-              // Serial.print("w");
+            Serial.println("Press w key");
           }
         } else {
           PCF_38.write(reverseLED,0);
-          // Serial.print("s");
           if (crashDriveHack) {
-            Keyboard.press(KEY_DOWN_ARROW);
+            Serial.println("Crash Drive Mode:  press Down Arrow");
           } else {
-            Keyboard.press('s');
+           Serial.println("Press s key");
           }
         } 
       }
-      Serial.println(F("FAST MODE (Turbo in CD2)"));
-      Keyboard.press(KEY_LEFT_SHIFT);
+      Serial.println("All Kbrd Modes:  press Shift for fast speed");
       // you cannot see this shift effect in an xterm but video game sees it OK
 
       lastPace = footPace;
@@ -1470,8 +1382,8 @@ void readRotaryHall () {
   }
   
   steerVal = map(rawSteerVal,minRotaryHall,maxRotaryHall,-180,180);
-  // Serial.print(F("RAW Steer: ")); Serial.print(rawSteerVal);
-  // Serial.print(F("  JOY Steer: ")); Serial.println(steerVal);
+  Serial.print(F("RAW Steer: ")); Serial.print(rawSteerVal);
+  Serial.print(F("  JOY Steer: ")); Serial.println(steerVal);
   
   //Serial.print(F("  Status: "));        // remove // if like to display the bits
   Wire.beginTransmission(0x36);       // transmit to device as5601
