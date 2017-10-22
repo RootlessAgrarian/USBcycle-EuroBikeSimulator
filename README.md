@@ -91,8 +91,12 @@ Anyway, I'm sorry about this and am hoping that Unity will eventually respond an
 *** Future Plans:
 
 -- Improving ETS2 and ATS support with more appropriate base vehicle, better sound mods, etc.
+
 -- ETS2 telemetry server enabling feedback for e.g. a 12v fan whose speed is proportional to truck speed... 
+
 -- custom pcb design for a "kit" version
+
 -- improved front panel layout (version 2 of the control box)
+
 -- (possible) "flying bike" mode using ETS2 godcam
 
