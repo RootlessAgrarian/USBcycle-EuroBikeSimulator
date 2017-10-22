@@ -22,13 +22,13 @@
 // As of Oct 2017, wii/mouse no longer working with Unity game build.  Mysterious results from
 // testing:  
 //     American Truck Sim: yes, works fine
-//     Beginner's Guide: yes
-//     Dear Esther: yes
+//     Beginner's Guide:   yes
+//     Dear Esther:        yes
 //     Dr Langeskov (etc): no  (a Unity game)
-//     Everything: no  (a Unity game)
-//     Obduction: yes
-//     OffPeak: no  (a Unity game)
-//     Sunless Sea: yes
+//     Everything:         no  (a Unity game)
+//     Obduction:          yes
+//     OffPeak:            no  (a Unity game)
+//     Sunless Sea:        yes
 // Reported to Unity Answers Oct 9 2017
 //
 // USBcycle reads 3 reed switches to monitor rotation and derive 
@@ -189,13 +189,14 @@ Encoder AS5601enc(18, 19);
 // these values are absolutes, i,e, -90 to 90 on the bars;  but we would like more sensitive steering
 // steerfactor should be settable by a panel switch!
 float steerFactor = .70;
-int minlimRotaryHall = 1083;
-int maxlimRotaryHall = 1883;
+//
+int rotaryHallCtr = 1420;                     // this must be empirically determined.  in hindsight, the magnet
+                                              // s/b mounted on a rotating jig so the user could set it to a target
+                                              // value instead of having to hack the code when the geometry drifts.
+int minRotaryHall = rotaryHallCtr - 400;
+int maxRotaryHall = rotaryHallCtr + 400;
 // centre value is 1483;  this seems to drift a bit, possibly because of jolting to the magnet arm
-int rangeRotaryHall = maxlimRotaryHall - minlimRotaryHall;
-float centreRotaryHall = minlimRotaryHall + rangeRotaryHall / 2.0;
-int maxRotaryHall = maxlimRotaryHall;
-int minRotaryHall = minlimRotaryHall;
+int rangeRotaryHall = maxRotaryHall - minRotaryHall;
 int steerVal = 0;
 int rawSteerVal = 0;
 int last_distance = 0;
@@ -313,8 +314,8 @@ int last_distance = 0;
   // and we can scale by the pot, if we install a pot.  but that implies a readout and... sigh...
   // we're out of pins.
   float maxRunSpeed = 100.0;             // I kinda doubt that anyone can pedal faster than this!
-  float runThresh = 40;                  // hard wiring this not such a great idea.  ideally set max values
-  float walkThresh = 20;                 // and multiply them by the gain pot factor (50 percent as the default).
+  float runThresh = 65;                  // hard wiring this not such a great idea.  ideally set max values
+  float walkThresh = 45;                 // and multiply them by the gain pot factor (50 percent as the default).
   boolean slowWalking = 1;               // below a certain rpm, send out just one char per leading edge.
   boolean Stopped = 1;                   // we can stop doing much of anything when we are motionless.
   int motionTimeout = 2000;              // how long must elapse between edges to conclude that we are stopped?
@@ -323,7 +324,9 @@ int last_distance = 0;
   int walkCt = 0;                        // number of walk speed loops you need to change up
   uint8_t keyPressed = 0;
   int usbHIDsending = 1;
-
+  boolean reedTrip = 0;          // in slow walking mode, tells us that reed 0 or 2 has tripped so we should take a step
+  long stepStart = 0;            // in slow walking mode, this tells us when to release the slow step key
+  int stepLength = 350;          // in slow walking mode, this tells us how long to hold the slow step key
   
 //  boolean invertMouseY = 0;              // need this for intuitive game look-around control
   boolean crashDrive = 0;                // switch on "drive" rather than "walk" HID output logic
@@ -341,10 +344,10 @@ int last_distance = 0;
                                           
   boolean turnLeft = 0;          // steering state     
   boolean turnRight = 0;         // steering state
+  boolean turnBack = 0;          // steering state
   boolean brakesOn = 0;          // brake state 
   boolean inForward = 0;         // motion state
   boolean inReverse = 0;         // motion state
-  boolean reedTrip = 0;          // not yet used :  in slow walking mode, tells us that reed 0 or 2 has tripped
   float driveThresh = .10;       // aDelta must be larger than this for the difference to count
   boolean turboDrive = 0;        // flag whether turbo drive (shift) is engaged
   float turboThresh = 60;        // rpm threshhold at which to engage turbo drive
@@ -549,6 +552,15 @@ void loop() {
   // having a demonically possessed kbrd and/or mouse makes it hard to recover.
  
   areWeSending();
+
+  if (!crashDrive) {
+// first order of business:  if we have a single step outstanding, then cancel
+// it if its elapsed time has run out;  if we have not yet taken it, start it.
+// but only if in wasd mode, not crashdrive mode!
+  if (reedTrip) {
+    checkSlowStep();
+  }
+  }
 
   // check user switches
   checkUserSwitches();
@@ -922,44 +934,25 @@ void steerMouseX() {
 //  map it to a reasonable degree of mouse movement, and move the mouse in X.
 //  but only if HID sending is enabled of course.
 //  this code adapted from Arduino example JoystickMouseControl
-
-
   
   if (!usbHIDsending) {return;}
-  
-  boolean turnBack = 0;
-  
+
   int distance = 0;
   // parameters for mapping analog sensor to mouse:
-  int range = 96;                // output range of X or Y movement
+  int range = 48;                // output range of X or Y movement
   int responseDelay = 5 ;        // response delay of the mouse, in ms
-  int threshold = 6;             // resting threshold / deadband -- make this pretty twitchy for CD2
+  int threshold = 3;             // resting threshold / deadband -- make this pretty twitchy for CD2
   int thresh2 = 9;
   int centre = range / 2;        // resting position value
+  // note that these values have to work (at present) for both mouse and
+  // keyboard steering, i.e. both WASD world and CrashDrive world.  
+  // if you make range too large, your mouse steering in WASD games will get crazy.
+  // if you make range too small, you will have difficulty tuning your deadband in CD2.
+  // I found 96 was too large, 48 about right. ymmv.
 
   // if the output reading is outside from the rest position threshold, use it:
   int mappedval = map(rawSteerVal, minRotaryHall, maxRotaryHall, 0, range);
   distance = mappedval - centre;
-
-  /*
-  if (abs(distance) < threshold) {
-    distance = 0;
-    if (crashDrive && (turnLeft || turnRight)) {
- //   Serial.println(F("CD2 neutral steering, release left and right arrow"));
-    if (turnLeft) {
-      Serial.println(F("CD2 Was turning left, now neutral, release left arrow!"));
-      Keyboard.release(KEY_LEFT_ARROW);
-      turnLeft = 0;
-    }
-    if (turnRight) {
-      Serial.println(F("CD2 Was turning right, now neutral, release right arrow!"));
-      Keyboard.release(KEY_RIGHT_ARROW);
-      turnRight = 0;
-    }
-    }
-    return;
-  }
-  */
   
   /*
   Serial.println(F("Distance gt threshold, make a turn"));
@@ -988,22 +981,21 @@ void steerMouseX() {
 
   // the rest of this code is all crashdrive steering madness
 
-  // if we are in the deadband, cancel any steering
+  // if we are in the deadband, as we cross the threshhold cancel any steering
   if (abs(distance) < threshold) {
+//    Serial.print(F("In Deadband, cancel all steering   raw "));  Serial.println(rawSteerVal);
     if (abs(last_distance) >= threshold) {
     Serial.print(F("In Deadband, cancel all steering   raw "));  Serial.println(rawSteerVal);
-    }
     Keyboard.release(KEY_LEFT_ARROW);
     Keyboard.release(KEY_RIGHT_ARROW);
     turnRight = 0;
     turnLeft = 0;
+    }
     last_distance = distance;
     return;
    }
 
   // if the user is not moving the bars, do nothing.
-  // this means "do not release pressed arrow" if you are turned that far,
-  // but it also means "don't tap again" if you are in the tap zone.
 
   if (abs(distance) == abs(last_distance)) {
     last_distance = distance;
@@ -1011,66 +1003,39 @@ void steerMouseX() {
   }
 
   // distance is decreasing
-  // if we are just starting to turn the bars back to centre, stop the keystrokes right now
+  // if we are just starting to turn the bars back towards centre, stop the keypress right now
   if (abs(distance) < abs(last_distance)) {
     if (!turnBack) {
-    Serial.println(F("Turning back, release steering keys"));
-    Keyboard.release(KEY_LEFT_ARROW);
-    Keyboard.release(KEY_RIGHT_ARROW);
-    turnRight = 0;
-    turnLeft = 0;
-    turnBack = 1;
+      Serial.println(F("Turning back, release steering keys"));
+      Keyboard.release(KEY_LEFT_ARROW);
+      Keyboard.release(KEY_RIGHT_ARROW);
+      turnBack = 1;
+      turnRight = 0;
+      turnLeft = 0;
     }
     last_distance = distance;
     return;
   }
 
   // so you only get here if distance is increasing.
+ //    Serial.println(F("+motion, turnBack = 0"));
+     turnBack = 0;
   
-  turnBack = 0;
-  // in order to prevent a flood of steering taps, we stop the turn immediately with one tap.
-  // but if you turn the bars even further you can keep the turn key pressed.
- 
-    if (distance > 0) {
+ //  simplify, simplify, simplify.
+//   Serial.print(F("In Steer Zone, raw "));  Serial.println(rawSteerVal);
+   if (distance > 0) {
       if (!turnLeft) {
-        Serial.print(F("CD2 turn left... raw "));  Serial.print(rawSteerVal); 
-        Serial.print(F("   map "));  Serial.print(mappedval);  
-        Serial.print(F("   distance "));  Serial.print(distance);
-        Serial.print(F("   lastdist ")); Serial.println(last_distance);
-        if (abs(distance) < thresh2) {
-          Serial.println(F("LEFT ARROW TAP"));
-          Keyboard.release(KEY_LEFT_ARROW);
-          Keyboard.press(KEY_LEFT_ARROW);
-          delay(10);
-          Keyboard.release(KEY_LEFT_ARROW);
-        } else {
-          Serial.println(F("LEFT ARROW PRESS"));
-          Keyboard.press(KEY_LEFT_ARROW);
-        }
+        Serial.println(F(" <-- "));
+        Keyboard.press(KEY_LEFT_ARROW);
         turnLeft = 1;
-//      turnRight = 0;
       }
-    } else {            // 
-      if (!turnRight) {
-        Serial.print(F("CD2 start turn right... raw ")); Serial.print(rawSteerVal); 
-        Serial.print(F("   map "));  Serial.print(mappedval);  
-        Serial.print(F("   distance "));  Serial.print(distance);
-        Serial.print(F("   lastdist ")); Serial.println(last_distance);
-        if (abs(distance) < thresh2) {
-          Serial.println(F("RIGHT ARROW TAP"));
-          Keyboard.release(KEY_RIGHT_ARROW);        
-          Keyboard.write(KEY_RIGHT_ARROW);
-          delay(10);
-          Keyboard.release(KEY_RIGHT_ARROW);
-        } else {
-          Serial.println(F("RIGHT ARROW PRESS"));
-          Keyboard.press(KEY_RIGHT_ARROW);
-        }
+      } else {
+       if (!turnRight) {
+        Serial.println(F(" -->  "));
+        Keyboard.press(KEY_RIGHT_ARROW);
         turnRight = 1;
-//      turnLeft = 0;
+       }
       }
-    }
- 
     last_distance = distance;
 }
 
@@ -1227,6 +1192,7 @@ int readSensor(int i) {
     // reedTrip will be unset when the keystroke is emitted.
     if ((i == 2) || (i == 0)) {
     if (slowWalking) {
+//      Serial.print(F("SlowWalking, set reedTrip 1, saw reed "));  Serial.println(i);
       reedTrip = 1;
      }
     }
@@ -1288,7 +1254,7 @@ void stopTheWorld(int i) {
       digitalWrite(loSpdLED,LOW);
       digitalWrite(medSpdLED,LOW);
       digitalWrite(hiSpdLED,LOW);
-      DEBUG_PRINT("STOP DETECTED");
+      DEBUG_PRINT("STOP DETECTED, set slowWalking 1");
       Stopped = 1;
       slowWalking = 1;
       PCF_38.write(stopLED,0);
@@ -1372,7 +1338,7 @@ void doWalk(long now) {
     }
     
     // case 1:  we are walking slower than normal walk speed:  slow walking
-    // this is a special mode:  we issue individual keystrokes (see reed switch code)
+    // this is a special mode:  we issue individual keystrokes (see reed switch code and mainloop)
     
     if ((abs(avgRPM) < (walkThresh*potVal + fudge))) {
       footPace = 0;
@@ -1387,14 +1353,6 @@ void doWalk(long now) {
         digitalWrite(hiSpdLED,LOW);
         lastPace = footPace;
         lastPaceTime = now;
-      }
-      if (reedTrip) {
-        if (spinDir > 0) {
-          Keyboard.write("w");
-        } else {
-          Keyboard.write("s");
-        }
-        reedTrip = 0;
       }
     }
     
@@ -1416,7 +1374,10 @@ void doWalk(long now) {
       // speeding up from a tentative tapping walk, hold down the direction key
       if (lastPace > footPace) {
         Keyboard.release(KEY_LEFT_SHIFT);   
-      } else {      
+      } else {
+        // cancel any outstanding step
+        reedTrip = 0;
+        stepStart = 0;      
         if (spinDir > 0) {
           PCF_38.write(reverseLED,1);
             Keyboard.press('w');
@@ -1469,6 +1430,40 @@ void doWalk(long now) {
     lastSampleAvg = avgRPM;
 }
 
+void checkSlowStep() {
+
+//  WASD mode only!
+//  we are here because reedTrip was set.
+//  readTrip was set in the readSensor code, because we are in slow walk mode and a reed 0 or 2 was detected.
+//  so we're trying to take one step.
+//  this is outside the regular doWASD clock.
+//  if reedTrip was set and stepStart is not set, then we need to commence a step.
+//  if reedTrip was set and stepStart is set, then we are in mid-step and need to check our duration and
+//  if necessary, terminate our step.
+
+      if (stepStart > 0) {
+        long now = millis();
+        if ((now - stepStart) >= stepLength) {
+        // END STEP
+          Keyboard.release('w');
+          Keyboard.release('s');
+          reedTrip = 0;
+          stepStart = 0;
+          Serial.println(F("In checkSlowStep end step"));
+        }
+      } else {
+        if (spinDir > 0) {
+          Serial.println(F("In checkSlowStep go FWD press w"));
+          Keyboard.press('w');
+        } else {
+          Serial.println(F("In checkSlowStep go REV press s"));
+          Keyboard.press('s');
+        }
+        stepStart = millis();        
+      }
+}
+
+
 void doDrive(long now) {
 
 //  what we need to know:
@@ -1488,40 +1483,6 @@ void doDrive(long now) {
       inReverse = 0;
       return;
     }
-
-//  this aDelta based algorithm is too clunky, unresponsive in practise.  let's simplify.
-    /*
-//  aDelta is below required threshhold:  clear keypresses, unset flags and return
-    if (abs(aDelta) < driveThresh) {
-        if (inForward || inReverse) {              
-        Serial.print(F("Insufficient RPM, release motion keys:  RPM : "));  Serial.println(avgRPM);
-        }
-        if (inForward) {
-        Keyboard.release(KEY_UP_ARROW);
-        inForward = 0;
-        }
-        if (inReverse) {
-        Keyboard.release(KEY_DOWN_ARROW);
-        inReverse = 0;
-        }
-        return;
-    }
-
-    if (aDelta < 0) {
-        if (inForward || inReverse) {Serial.print(F("DECELeration detected, release key ... aDelta: ")); Serial.println(aDelta);}
-        if (inForward) {
-        Keyboard.release(KEY_UP_ARROW);
-        inForward = 0;
-        }
-        if (inReverse) {
-        Keyboard.release(KEY_DOWN_ARROW);
-        inReverse = 0;
-        }
-        return;
-    }
-    */
-    
-//  aDelta is positive and ge required threshhold which causes us to press a key
 
 //  simple version:  not Stopped and pedalling forward?  hit the gas!
 
