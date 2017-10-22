@@ -41,35 +41,57 @@ but you could adapt it to other driving, walking, or endless-runner games.
 -- a bicycle + trainer-stand or other device (rotary stepper, treadmill, etc) with a rotating or reciprocating 
 mechanism that would enable you to detect fwd (and reverse if desired) motion using reed switches and magnets.
 
--- 2 Arduinos with USB HID capability, i.e. Leos, Pro Micros, Dues.
+-- 2 Arduinos with USB HID capability, i.e. Leos, Pro Micros, Dues.  they run the Leo1 and Leo2 code from this repository.
 
 -- associated parts (see detailed project writeup above):   LEDs, switches, sensors, wire, proto boards, etc
 
 -- a few evenings of your time to attach sensors to bike, make a harness, build a control box for the duinos, etc.
 
--- (preferably) a basic USB debug/monitor tool to help you verify the functioning of your control box
+-- (preferably) a basic USB HID debug/monitor tool to help you verify the functioning of your control box
 
 -- a few more evenings of your time to test with your game and tune your USBcycle for your specific application:
 if you are using ETS2, you'll want to install my Cyclist profile and BikeView mod (tweaks to the Mercedes Actros
 truck to suppress truck sfx and move camera 5 to a cyclist's head position ahead of the front bumper).
 
+------------------------------------------------------------------
 
+*** WASD version:
+
+You will notice there is a different .ino file here, Leo_WASD_v3 (or whatever version it is at the time you download
+the kit).  This version requires only one Leonardo or similar Arduino with USB HID capability.  It enables you to play
+WASD (walking) and keyboard-driving games such as Portal, Dear Esther, Obduction (WASD) or Crash Drive 2 (driving).
+The code as written switches between these modes in response to a toggle switch on an Arduino port.  It has various
+options including the use of a wiichuck as a steering/mousing device (you might use this with a portable stepper instead
+of a bike, or with an exercise-bike that has no brakes or steering).
+
+This is a much simpler project to build, and it can be quite fun.  You need an open world game in which there's more
+running and walking than, say, fiddling about inside buildings interacting with control panels and stuff.  Dear Esther
+actually makes a pretty good mountain biking playground :-) and if you've played Obduction all the way through and
+unlocked everything, then you can ride around that spectacular world.  I have tested the Crash Drive version
+more thoroughly and it is a challenging and fun ride, but it's more a series of quick sprints and stops than a continuous
+spinning workout.
+
+Now for the bad news.
+
+USBcycle used to work with Unity games such as Off Peak (which was one of my favourite test games early
+in development, April/May 2017).  However, as of October 2017 Unity games are consistently refusing to recognise any 
+Mouse X/Y input from the Leonardo.  They do recognise mouse button presses, just not movement.  I have posted queries to
+Unity Answers and to Arduino forum and am waiting hopefully for a clue.  In the mean time, I have to warn users that
+Unity-based games probably will not work with USBcycle, and this is very disappointing (because I do a little virtual
+world building in Unity myself).  A list of Unity games that don't accept mouse xy input from USBcycle includes:
+Off Peak
+Everything
+Dr Langeskov (&c)
+Although CrashDrive is built with Unity, the mouse problem doesn't matter because CD2 doesn't use the mouse at all :-)
+Anyway, I'm sorry about this and am hoping that Unity will eventually respond and we can figure out what's not working.
+
+-----------------------------------------------------------------------------
 *** Future Plans:
 
--- One immediate plan is to build a WASD version customised for CrashDrive (one of the silliest, but most entertaining
-simple driving games around).  CrashDrive is well suited to USBcycle and I hope to make a nice responsive (and crazy)
-biking experience out of it.
-
--- Improving ETS2 and ATS support with more appopriate base vehicle, better sound mods, etc.
+-- Improving ETS2 and ATS support with more appropriate base vehicle, better sound mods, etc.
 
 -- Improving WASD version for walking games like Dear Esther, Portal etc.
 
 
 *** NOTE as of Fall 2017:
 
-For some reason, USBcycle used to work with Unity games such as Off Peak (which was one of my favourite test games early
-in development, April/May 2017).  However, as of October 2017 Unity games are consistently refusing to recognise any 
-Mouse X/Y input from the Leonardo.  They do recognise mouse button presses, just not movement.  I have posted queries to
-Unity Answers and to Arduino forum and am waiting hopefully for a clue.  In the mean time, I have to warn users that
-Unity-based games probably will not work with USBcycle, and this is very disappointing (because I do a little virtual
-world building in Unity myself).
