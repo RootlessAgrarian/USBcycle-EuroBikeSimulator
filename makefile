@@ -1,7 +1,7 @@
 getduino:	
 		cp /Users/de/Work/ARDUINO/devel/PROJECTS/Leo1_Current/Leo1_Current.ino ./arduino
 		cp /Users/de/Work/ARDUINO/devel/PROJECTS/Leo2_Current/Leo2_Current.ino ./arduino
-		cp /Users/de/Work/ARDUINO/devel/PROJECTS/Leo_WASD_v2/Leo_WASD_v2.ino ./arduino
+		cp /Users/de/Work/ARDUINO/devel/PROJECTS/Leo_WASD_v3/Leo_WASD_v3.ino ./arduino
 		cp /Users/de/Work/ARDUINO/devel/PROJECTS/USBcycle_Diagnostic/USBcycle_Diagnostic.ino ./arduino
 
 getprof:

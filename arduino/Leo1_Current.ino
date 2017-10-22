@@ -110,8 +110,9 @@ Encoder AS5601enc(18, 19);
 // these values are absolutes, i,e, -90 to 90 on the bars;  but we would like more sensitive steering
 // steerfactor should be settable by a panel switch!
 float steerFactor = .70;
-int minlimRotaryHall = 1000;
-int maxlimRotaryHall = 1980;
+int minlimRotaryHall = 1083;
+int maxlimRotaryHall = 1883;
+// centre value is 1483, we allow rotation of +400 and -400
 int maxRotaryHall = maxlimRotaryHall;
 int minRotaryHall = minlimRotaryHall;
 int steerVal = 0;
