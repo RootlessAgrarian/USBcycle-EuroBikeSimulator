@@ -1,7 +1,7 @@
 # EuroBikeSimulator
 # Arduino code and other bits and pieces required to ride a bike through ETS2
 
-NOTE (Oct 14 2017):  USBcycle is just about ready for public download... and about to be tagged 1.0.
+(Oct 20 2017):  USBcycle is ready for public download...
 
 The project is complete (this version) and working, but could do with improved documentation
 and packaging (ongoing).  Youtube video is probably the fastest way to understand what it's about:
@@ -57,8 +57,10 @@ truck to suppress truck sfx and move camera 5 to a cyclist's head position ahead
 
 *** WASD version:
 
-You will notice there is a different .ino file here, Leo_WASD_v3 (or whatever version it is at the time you download
-the kit).  This version requires only one Leonardo or similar Arduino with USB HID capability.  It enables you to play
+This version of USBcycle requires only one Leonardo or similar Arduino with USB HID capability.
+
+You may notice there is a different .ino file here, Leo_WASD_v3 (or whatever version it is at the time you download
+the kit).  It enables you to play traditional open-world
 WASD (walking) and keyboard-driving games such as Portal, Dear Esther, Obduction (WASD) or Crash Drive 2 (driving).
 The code as written switches between these modes in response to a toggle switch on an Arduino port.  It has various
 options including the use of a wiichuck as a steering/mousing device (you might use this with a portable stepper instead
@@ -71,7 +73,7 @@ unlocked everything, then you can ride around that spectacular world.  I have te
 more thoroughly and it is a challenging and fun ride, but it's more a series of quick sprints and stops than a continuous
 spinning workout.
 
-Now for the bad news.
+Now for the bad news...
 
 USBcycle used to work with Unity games such as Off Peak (which was one of my favourite test games early
 in development, April/May 2017).  However, as of October 2017 Unity games are consistently refusing to recognise any 
@@ -89,9 +91,8 @@ Anyway, I'm sorry about this and am hoping that Unity will eventually respond an
 *** Future Plans:
 
 -- Improving ETS2 and ATS support with more appropriate base vehicle, better sound mods, etc.
-
--- Improving WASD version for walking games like Dear Esther, Portal etc.
-
-
-*** NOTE as of Fall 2017:
+-- ETS2 telemetry server enabling feedback for e.g. a 12v fan whose speed is proportional to truck speed... 
+-- custom pcb design for a "kit" version
+-- improved front panel layout (version 2 of the control box)
+-- (possible) "flying bike" mode using ETS2 godcam
 
