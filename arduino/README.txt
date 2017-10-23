@@ -30,6 +30,7 @@ Leo1_Diagnostic.ino
 	talk to Leo2 over I2C.
 
 Leo2_Diagnostic.ino
-	A stripped version of Leo2_Current, as above.  Does joystick axis
+	A verbose version of Leo2_Current, as above.  Does joystick axis
 	sends, which can be verified by a utility such as JoystickShow.
+	Prints out a chatty log to Serial Monitor.
 
