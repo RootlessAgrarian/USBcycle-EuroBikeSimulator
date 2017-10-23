@@ -189,6 +189,16 @@ SHARE_DATA share_data;
 // ***
 #define I2C_SLAVE_ADDRESS 8
 const byte LEO2 = 8;       // i2c address of Leo2, Joystick controller
+// Note the timing issues.  The I2C bus has to be powered up for Leo2 to join it, and it won't be
+// powered up if Leo1 is dark.  So they pretty much have to be powered up simultaneously.
+// Leo2 will boot anyway with no I2C bus, but it won't be able to talk (this should
+// probably be fixed in a future release).  OTOH, so long as the bus has power when Leo2 starts
+// up, it doesn't care if anyone else is out there, because it's a slave;  it never initiates any
+// conversations.  It will sit patiently waiting for a send or rcv event from Leo1, forever.
+// Leo1 on the other hand, needs to know that all its slaves are present before it will finish
+// init.  If any of them is missing, it will blink a trouble light and hang forever.  This is why
+// (this is important) Leo1 checks for Leo2 last of all the I2C slaves -- to give Leo2 time to get
+// through its own boot/init and be ready to answer the roll-call.
 
 //
 // NB: Wire, Keyboard and Mouse are stock Ardu libs

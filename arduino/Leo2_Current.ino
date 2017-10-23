@@ -276,6 +276,8 @@ void setup() {
     digitalWrite(i,LOW);
   }
 
+  blinky(stopLED,6);
+
   // reed switches when closed connect pin to ground
   pinMode(reed0,INPUT_PULLUP);
   pinMode(reed1,INPUT_PULLUP);
@@ -289,13 +291,20 @@ void setup() {
   // pinMode(offSwitch,INPUT_PULLUP);
   
   // tell the world we are alive and struggling towards consciousness
-  digitalWrite(diagLED,HIGH);
+  blinky(diagLED,6);
   delay(100);
   
   // 
   // now try to join the I2C bus and hope that the bus master is awake by now
   //
   Serial.println("Join I2C bus");
+  // join i2c bus as slave but only if we see pullup voltage on pins 2 and 3
+  int d2 = digitalRead(2);
+  int d3 = digitalRead(3);
+  if (!(d2&d3)) {
+    Serial.println(F("OUCH, no I2C bus power."));
+  }
+  blinky(stopLED,6);
   Wire.begin(I2C_SLAVE_ADDRESS);                // join i2c bus with address #8
   // there may be a long delay
   Wire.onReceive(receiveEvent); // register event for receive from master
@@ -842,6 +851,19 @@ void checkBrake() {
   // later in the code we will have to map this to 0-255
   
 }
+
+//
+// generic stuff that should be in a shared .h
+//
+void blinky(int which, int times) {
+  for (int i = 0; i < times; i++) {
+    digitalWrite(which,HIGH);
+    delay(100);
+    digitalWrite(which,LOW);
+    delay(150);
+  }
+}
+
 
 //-------------------------------------------------------------------
 //-----------------------------END-----------------------------------
