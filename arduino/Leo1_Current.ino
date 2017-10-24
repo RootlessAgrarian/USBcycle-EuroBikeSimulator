@@ -108,13 +108,14 @@ const byte KEYPAD_ENTER = 224;
 #include <Encoder.h>
 Encoder AS5601enc(18, 19);
 // these values are absolutes, i,e, -90 to 90 on the bars;  but we would like more sensitive steering
-// steerfactor should be settable by a panel switch!
-float steerFactor = .70;
-int minlimRotaryHall = 1083;
-int maxlimRotaryHall = 1883;
-// centre value is 1483, we allow rotation of +400 and -400
-int maxRotaryHall = maxlimRotaryHall;
-int minRotaryHall = minlimRotaryHall;
+// steerfactor (not currently in use) should be settable by a panel switch...
+// float steerFactor = .70;
+// centre value is determined at startup; we allow rotation of +400 and -400
+// NOTE:  it's important to have the bars centred at boot time!
+int maxRotaryHall = 2000;
+int minRotaryHall = 1000;
+int steerCentre = 1500;
+int steerLock = 400;
 int steerVal = 0;
 int rawSteerVal = 0;
 
@@ -1312,17 +1313,22 @@ void displaySpeed() {
   
 }
 
-// we have:  maxlimRotaryHall, minlimRotaryHall, steerFactor (scale the range)
 void setSteeringScale () {
   
 // range is the actual physical range of the encoder as installed
 // midpoint should in theory be "straight ahead"
 // scale range to steerFactor of physical range, and set limits for lock/lock joystick
 // the smaller steerFactor is, the more sensitive the steering
-  int range = maxlimRotaryHall - minlimRotaryHall;
-  int midpoint = minlimRotaryHall + range/2;
-  maxRotaryHall = midpoint + (range/2 * steerFactor);
-  minRotaryHall = midpoint - (range/2 * steerFactor);
+// assume the bars are set to dead centre.
+
+  readRotaryHall();
+  steerCentre = rawSteerVal;
+  maxRotaryHall = steerCentre + steerLock;
+  minRotaryHall = steerCentre - steerLock;
+  if (minRotaryHall > maxRotaryHall) {
+    blinky(redLight,12);
+    Serial.println(F("Rotary Hall Encoder misaligned with magnet!"));
+  }
   
 }
 

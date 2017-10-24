@@ -11,7 +11,7 @@ getprof:
 		find . -name '*autosave_job*' -exec /bin/rm -rf {} \;
 
 getmods:
-		cp /ers/de/Library/Application\ Support/Euro\ Truck\ Simulator\ 2/mod/BikeView*.scs ETS2_mods
+		cp /Users/de/Library/Application\ Support/Euro\ Truck\ Simulator\ 2/mod/BikeView*.scs ETS2_mods
 
 push:		
 	git push origin master
@@ -20,4 +20,4 @@ pull:
 	git pull origin master
 
 init:
-		git remote add origin https://github.com/RootlessAgrarian/EuroBikeSimulator.git
+	git remote add origin https://github.com/RootlessAgrarian/USBcycle\-EuroBikeSimulator.git
