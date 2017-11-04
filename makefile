@@ -1,10 +1,10 @@
 getduino:	
-		cp /Users/de/Work/ARDUINO/devel/PROJECTS/Leo1_Current/Leo1_Current.ino ./arduino
-		cp /Users/de/Work/ARDUINO/devel/PROJECTS/Leo2_Current/Leo2_Current.ino ./arduino
-		cp /Users/de/Work/ARDUINO/devel/PROJECTS/Leo_WASD_v3/Leo_WASD_v3.ino ./arduino
+		cp /Users/de/Work/ARDUINO/devel/PROJECTS/USBcycle_Leo1/USBcycle_Leo1.ino ./arduino
+		cp /Users/de/Work/ARDUINO/devel/PROJECTS/USBcycle_Leo2/USBcycle_Leo2.ino ./arduino
+		cp /Users/de/Work/ARDUINO/devel/PROJECTS/USBcycle_WASD/USBcycle_WASD.ino ./arduino
 		cp /Users/de/Work/ARDUINO/devel/PROJECTS/USBcycle_Diagnostic/USBcycle_Diagnostic.ino ./arduino
-		cp /Users/de/Work/ARDUINO/devel/PROJECTS/Leo1_Diagnostic/Leo1_Diagnostic.ino ./arduino
-		cp /Users/de/Work/ARDUINO/devel/PROJECTS/Leo2_Diagnostic/Leo2_Diagnostic.ino ./arduino
+		cp /Users/de/Work/ARDUINO/devel/PROJECTS/USBcycle_Leo1_Test/USBcycle_Leo1_Test.ino ./arduino
+		cp /Users/de/Work/ARDUINO/devel/PROJECTS/USBcycle_Leo2_Test/USBcycle_Leo2_Test.ino ./arduino
 
 getprof:
 		cp -r /Users/de/Library/Application\ Support/Euro\ Truck\ Simulator\ 2/profiles/4379636C697374 ETS2_profiles
