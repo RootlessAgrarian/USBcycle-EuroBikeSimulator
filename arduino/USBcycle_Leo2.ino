@@ -150,8 +150,9 @@ int brakeMax = 880;
 int tval = 0;
                                       
 //give a name to the group of data we share
-SHARE_DATA share_data;
-boolean gotData = 0;  // this is set once, the first time we get data from master
+volatile SHARE_DATA share_data;
+volatile boolean gotData = 0;  // this is set once, the first time we get data from master
+volatile int dataRcvd = 0;    // this is 0 if all is well, else unexpected byte count
 
 #define I2C_SLAVE_ADDRESS 8
 
@@ -237,6 +238,9 @@ int potPct = 0;
   long calibrateBegin = 0;
   int calTime = 5000;
   int lastRpm;
+
+  float throttleFactor = 1.0;     // factor by which to scale throttle input.
+                                  // default is 1.0
 //-------------------------------------------------------------------
 
 //
@@ -299,20 +303,23 @@ void setup() {
   //
   Serial.println("Join I2C bus");
   // join i2c bus as slave but only if we see pullup voltage on pins 2 and 3
+  int d2 = 0;
+  int d3 = 0;
   while(1) {
-  int d2 = digitalRead(2);
-  int d3 = digitalRead(3);
-  if (!(d2&d3)) {
-    Serial.println(F("OUCH, no I2C bus power."));
-    blinky(stopLED,6);
-  } else {
-    Serial.println(F("I2C bus power is OK"));
-    break;
-  }
+    d2 = digitalRead(2);
+    d3 = digitalRead(3);
+    if (!(d2&d3)) {
+      Serial.println(F("OUCH, no I2C bus power."));
+      blinky(stopLED,6);
+    } else {
+      Serial.println(F("I2C bus power is OK, join bus as slave #8"));
+      break;
+    }
+  delay(100);
   }
   blinky(diagLED,6);
   Wire.begin(I2C_SLAVE_ADDRESS);                // join i2c bus with address #8
-  // there may be a long delay
+  // there may be a long delay here
   Wire.onReceive(receiveEvent); // register event for receive from master
   Wire.onRequest(requestEvent); // register event for request from master
   // the master will set the timing for shared data exchanges
@@ -481,10 +488,22 @@ void loop() {
     // Serial.println(F("No data from Leo1"));
     return;
   }
+
+  if (dataRcvd) {
+    Serial.print(F("I2C Error, expected "));
+    Serial.print(sizeof(share_data));
+    Serial.print(F("bytes from Leo1 but got "));
+    Serial.println(dataRcvd);
+  }
   
+  // we turn off interrupts very, very briefly so that we aren't trying to read
+  // share_data when the interrupt routine is writing it.
+  noInterrupts();
+  dataRcvd = 0;
   steerVal = share_data.steer;
   swMask = share_data.mask;
-
+  interrupts();
+  
   // note that swMask is not actually being used, but if it were used it could pass
   // switch settings from Leo1 to Leo2 and vice versa.
 
@@ -510,21 +529,23 @@ void receiveEvent(int howMany) {
     if(howMany==sizeof(share_data)) {  
       I2C_readAnything(share_data);
       gotData = 1;
-      Serial.print(F("Data Received from Leo1: steerval "));
-      Serial.println(share_data.steer);
+      // Serial.print(F("Data Received from Leo1: steerval "));
+      // Serial.println(share_data.steer);
+      dataRcvd = 0;
     } else {
-      Serial.print(F("Wrong number of bytes received.  Expecting "));
-      Serial.print(sizeof(share_data));
-      Serial.print(F(" but got "));
-      Serial.println(howMany);
+      // Serial.print(F("Wrong number of bytes received.  Expecting "));
+      // Serial.print(sizeof(share_data));
+      // Serial.print(F(" but got "));
+      // Serial.println(howMany);
+      dataRcvd = howMany;
     }
     
 }
 
 void requestEvent() {
   
-  Serial.print("Data Requested by Leo1, rpm = ");
-  Serial.println(rpm);
+  // Serial.print("Data Requested by Leo1, rpm = ");
+  // Serial.println(rpm);
   share_data.rpm = average;
   share_data.potval = potVal;
   Wire.write ((uint8_t*) &share_data, sizeof(share_data));

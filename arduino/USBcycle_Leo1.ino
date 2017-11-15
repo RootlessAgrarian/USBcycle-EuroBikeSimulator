@@ -108,17 +108,19 @@ const byte KEYPAD_ENTER = 224;
 #include <Encoder.h>
 Encoder AS5601enc(18, 19);
 // these values are absolutes, i,e, -90 to 90 on the bars;  but we would like more sensitive steering
-// steerfactor (not currently in use) should be settable by a panel switch...
-// float steerFactor = .70;
+// steerfactor can be set from potVal by a button press.
+float steerFactor = 1.0;
 // centre value is determined at startup; we allow rotation of +400 and -400
 // increase that number and you can get more degrees of steering action (turn bars further, get 
 // more encoder count range).  but the range is mapped to a fixed joystick range.  so it's less
 // sensitive if you make the steerLock value larger.
 // NOTE:  it's important to have the bars centred at boot time!
-int maxRotaryHall = 2000;
-int minRotaryHall = 1000;
-int steerCentre = 1500;
-int steerLock = 400;
+// latest calibration:  +/- 90 on the bars is 1900 to 500, range +/- 700
+// so initial values are as follows:
+int maxRotaryHall = 1900;
+int minRotaryHall = 500;
+int steerCentre = 1200;
+int steerLock = 500;
 int steerVal = 0;
 int rawSteerVal = 0;
 
@@ -448,13 +450,20 @@ void setup() {
   Serial.println(F("Pins are initialised"));
   
 // join i2c bus as master but only if we see pullup voltage on pins 2 and 3
-  int d2 = digitalRead(2);
-  int d3 = digitalRead(3);
-  if (!(d2&d3)) {
-    Serial.println(F("OUCH, no I2C bus power."));
-    goCatatonic(1);       // next most severe, no i2c bus power:  yellow
+  int d2 = 0;
+  int d3 = 0;
+  while(1) {
+    d2 = digitalRead(2);
+    d3 = digitalRead(3);
+    if (!(d2&d3)) {
+      Serial.println(F("OUCH, no I2C bus power."));
+      blinky(yloLight,6);
+    } else {
+      blinky(grnLight,3);  
+      Serial.println(F("I2C bus is OK, start Wire library and wait 1/2 sec"));
+      break;
+    }
   }
-  blinky(grnLight,3);
   
   Wire.begin();
   delay(500);
@@ -491,7 +500,7 @@ void setup() {
   if (!i2cOK) {goCatatonic(3);}   // next most severe:  individual slave missing:  blue
   i2cOK = testI2C(0x77);
   if (!i2cOK) {goCatatonic(3);}   // next most severe:  individual slave missing:  blue
-  
+  Serial.println(F("...do a victory roll on the keypads..."));
   trellis.begin(0x76, 0x77);
   // do a highly visible victory roll on the trellis LEDs
   for (uint8_t i=0; i<numKeys; i++) {
@@ -506,7 +515,7 @@ void setup() {
     delay(50);
   }
 
-// init port expander
+// init port expander (when it was still here)
 
    blinky(bluLight,6);
 
@@ -549,12 +558,6 @@ void setup() {
 //  matrix.writeDisplay();
 
   blinky(redLight,4);
-  
-  matrixDoneMsg();
-  // give us a chance to read it
-  delay(2000);
-  
-  DEBUG_PRINT("INIT COMPLETE");
 
   // this is the point at which we would check to make sure that Leo2 is online...
   // and if it is not, we would loop waiting for it (10 sec should do it), 
@@ -564,14 +567,29 @@ void setup() {
   // aargh we should be doing this for all our i2c slaves.  more thought needed.
     
    Serial.println(F("Check for Leo2 on bus"));
-
+   matrixLeo2Msg();
+   // if we can't find Leo2 on the I2C bus then all is lost, so we just keep trying.  forever.
+   while(1) {
    i2cOK = testI2C(LEO2);
-   if (!i2cOK) {goCatatonic(3);}
+   if (!i2cOK) {
+    blinky(bluLight,2);
+    delay(1000);
+   } else {
+    Serial.println(F("Leo2 is on the I2C bus, all systems go"));
+    break;
+   }
+   }
 
-//  lastly set steering limits
-  setSteeringScale();
+//  lastly set steering 0 position
+  centreSteering();
    
   blinky(grnLight,6);    // show a green status light for Leo1, yay!
+  
+  matrixDoneMsg();
+  // give us a chance to read it
+  delay(2000);
+  
+  DEBUG_PRINT("INIT COMPLETE");
   Serial.println(F("*** Done with setup! ***"));
   
 } 
@@ -847,6 +865,15 @@ void matrixInitMsg () {
   matrix.writeDigitRaw(4,B01111000);      // t
   matrix.writeDisplay();
 }
+
+void matrixLeo2Msg () {
+  matrix.writeDigitRaw(0,B00111000);    // L
+  matrix.writeDigitRaw(1,B01111001);    // e
+  matrix.writeDigitRaw(3,B01011100);    // o
+  matrix.writeDigitRaw(4,B01011011);    // 2
+  matrix.writeDisplay();
+}
+
 void matrixDoneMsg () {
   matrix.writeDigitRaw(0,B01011110);    // d
   matrix.writeDigitRaw(1,B01011100);    // o
@@ -934,17 +961,32 @@ void mouseDance(int steps) {
 
 
 void getLeo2data() {
+  int got;
+  int want = sizeof(share_data);
   // Serial.println(F("Getting data from Leo2"));
-  Wire.requestFrom(I2C_SLAVE_ADDRESS, sizeof(share_data));
+  Wire.requestFrom(I2C_SLAVE_ADDRESS, want);
+  got = Wire.available();
+  if (got != want) {
+    Serial.print(F("ERROR, expected byte count "));
+    Serial.print(want);
+    Serial.print(F(" from Wire read of Leo2, but got "));
+    Serial.println(got);
+  } else {
   I2C_readAnything(share_data);
+  }
   
 }
 
 void putLeo2data() {
+  int status;
   // Serial.println(F("Sending data to Leo2"));
   Wire.beginTransmission(I2C_SLAVE_ADDRESS);
   Wire.write ((uint8_t*) &share_data, sizeof(share_data));
-  Wire.endTransmission();
+  status = Wire.endTransmission();
+  if (status) {
+    Serial.print(F("ERROR on Wire.write to Leo2: "));
+    Serial.println(status);    
+  }
   
 }
 
@@ -972,10 +1014,20 @@ void blinky2(int which, int times) {
 boolean testI2C(byte addr) {
   
   boolean success = 0;
-  for (int attempt = 0; attempt < 10; attempt++) {
+  for (int attempt = 0; attempt < 4; attempt++) {
     Serial.print(F("  Try to transmit to address "));
+    Serial.print(addr,HEX);
+    Serial.print(F("  dec "));
     Serial.println(addr);
+    
   Wire.beginTransmission (addr);
+  
+//  0:success
+//  1:data too long to fit in transmit buffer
+//  2:received NACK on transmit of address
+//  3:received NACK on transmit of data
+//  4:other error
+
   byte error = Wire.endTransmission();
   if (error == 0)
   {
@@ -985,8 +1037,9 @@ boolean testI2C(byte addr) {
      break;
   } else {
      Serial.print(F("  Slave contact attempt: "));
-     Serial.println(attempt);
-     attempt++;
+     Serial.print(attempt);
+     Serial.print(F("  ... ERROR: "));
+     Serial.println(error);
      delay(1000);
   }
   }
@@ -1130,6 +1183,7 @@ void trellisExec() {
       break;
     case 16:
     //    LH keypad, fly commands, Q -- this needs a HOLD feature
+    //    new plan:  this will become the FLY MODE key and be a toggle
       Keyboard.press('q');
       trellisDown = 1 << trellisPress;
       break;
@@ -1145,7 +1199,9 @@ void trellisExec() {
       break;
     case 19:
     //    godcam invoke -- KP1
-     Keyboard.write(KEYPAD_1);
+    //    now changed to Calibrate Steering:  centre bars and push this button.
+    // Keyboard.write(KEYPAD_1);
+      centreSteering();
       break;
     case 20:
     //    fly commands, A -- this needs a HOLD feature
@@ -1164,7 +1220,11 @@ void trellisExec() {
       break;
     case 23:
     //    teleport to location -- KP2
-      Keyboard.write(KEYPAD_2);
+    //    this is now "set steering factor from potval"
+      steerFactor = potVal;
+      Serial.print(F("Set Steering Sensitivity Factor to "));
+      Serial.println(steerFactor);
+      // Keyboard.write(KEYPAD_2);
       break;
     case 24:
     //    traffic toggle on/off (starts traffic 0)
@@ -1230,6 +1290,15 @@ void initRotaryHall() {
 }
 
 void readRotaryHall () {
+
+  // Suppose steerFactor was .75, we would take 25 pct off the range, or
+  // 12.5 pct off each end.  This would make our steering more sensitive
+  // as a smaller range of motion would be mapped to the standard +/- 180
+  // joystick value.
+  int steerRange = maxRotaryHall - minRotaryHall;
+  int adjust = int(steerRange * (1.0 - steerFactor) / 2.0);   // this is zero normally, steerFactor 1.0
+  int steerBegin = minRotaryHall + adjust;
+  int steerEnd = maxRotaryHall - adjust;
   
 // Quadrature enc with the AS5601 Hall position.
   Wire.beginTransmission(0x36);       // transmit to device as5601
@@ -1244,14 +1313,14 @@ void readRotaryHall () {
   rawSteerVal = reading/2;  
 
   // clamp steering input within sensible limits
-  if (rawSteerVal > maxRotaryHall) {
-    rawSteerVal = maxRotaryHall;
+  if (rawSteerVal > steerEnd) {
+    rawSteerVal = steerEnd;
   }
-  if (rawSteerVal < minRotaryHall) {
-    rawSteerVal = minRotaryHall;
+  if (rawSteerVal < steerBegin) {
+    rawSteerVal = steerBegin;
   }
   
-  steerVal = map(rawSteerVal,minRotaryHall,maxRotaryHall,-180,180);
+  steerVal = map(rawSteerVal,steerBegin,steerEnd,-180,180);
   // Serial.print(F("RAW Steer: ")); Serial.print(rawSteerVal);
   // Serial.print(F("  JOY Steer: ")); Serial.println(steerVal);
   
@@ -1316,7 +1385,7 @@ void displaySpeed() {
   
 }
 
-void setSteeringScale () {
+void centreSteering () {
   
 // range is the actual physical range of the encoder as installed
 // midpoint should in theory be "straight ahead"
@@ -1328,10 +1397,16 @@ void setSteeringScale () {
   steerCentre = rawSteerVal;
   maxRotaryHall = steerCentre + steerLock;
   minRotaryHall = steerCentre - steerLock;
-  if (minRotaryHall > maxRotaryHall) {
+  // this next test doesn't make much sense, does it.
+  // it was originally intended for a "wiggle the bars" calibration routine
+  /* if (minRotaryHall > maxRotaryHall) {
     blinky(redLight,12);
     Serial.println(F("Rotary Hall Encoder misaligned with magnet!"));
-  }
+  } */
+  blinky(bluLight,6);
+  Serial.print(F("Steering re-centred at raw value "));
+  Serial.println(rawSteerVal);
   
 }
+
 
