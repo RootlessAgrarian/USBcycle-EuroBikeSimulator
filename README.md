@@ -59,7 +59,7 @@ truck to suppress truck sfx and move camera 5 to a cyclist's head position ahead
 
 This version of USBcycle requires only one Leonardo or similar Arduino with USB HID capability.
 
-You may notice there is a different .ino file here, Leo_WASD_v3 (or whatever version it is at the time you download
+You may notice there is a different .ino file here, USBcycle_WASD (or whatever version it is at the time you download
 the kit).  It enables you to play traditional open-world
 WASD (walking) and keyboard-driving games such as Portal, Dear Esther, Obduction (WASD) or Crash Drive 2 (driving).
 The code as written switches between these modes in response to a toggle switch on an Arduino port.  It has various
