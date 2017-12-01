@@ -80,6 +80,7 @@ const char compile_date[] = __DATE__ " " __TIME__;
 
 // *** BASIC DUINO LIBRARIES
 
+#include "USBcycle.h"
 #include <Wire.h>
 #include <Keyboard.h>
 #include <Mouse.h>
@@ -109,7 +110,10 @@ const byte KEYPAD_ENTER = 224;
 Encoder AS5601enc(18, 19);
 // these values are absolutes, i,e, -90 to 90 on the bars;  but we would like more sensitive steering
 // steerfactor can be set from potVal by a button press.
-float steerFactor = 1.0;
+// I find that .80 is pretty good so I'm pre-setting it to that.
+float steerFactor = .80;
+boolean logThrottle = 0;
+
 // centre value is determined at startup; we allow rotation of +400 and -400
 // increase that number and you can get more degrees of steering action (turn bars further, get 
 // more encoder count range).  but the range is mapped to a fixed joystick range.  so it's less
@@ -123,6 +127,7 @@ int steerCentre = 1200;
 int steerLock = 500;
 int steerVal = 0;
 int rawSteerVal = 0;
+int lastSteer = 0;
 
 // ***
 // ***  definitions for Adafruit GFX
@@ -174,7 +179,8 @@ const byte  IODIRB=0x01;            // IODIRB register
 #include "I2C_Anything.h"
 
 //
-// I think this struct is limited to 28 bytes max size
+// I think this struct is limited to 28 bytes max size or possibly 32.
+// so be careful when defining.
 struct __attribute__ ((packed)) SHARE_DATA {
   //put your variable definitions here for the data you want to send/receive 
   //THIS MUST BE EXACTLY THE SAME ON THE OTHER ARDUINO
@@ -183,7 +189,8 @@ struct __attribute__ ((packed)) SHARE_DATA {
   int steer = 0;      // master shares with Leo2 the steering sensor position
                       // which could be from chuck or from linear Hall depending on
                       // mode switch (Leo1)
-  int mask = 0;       // master shares with Leo2 some switch status if needed
+  boolean throtl = 0; // copy of logThrottle, set by Leo1 (who owns the trellis keypad)
+  float throtr = 0.0; // copy of throtRange, which stretches throttle min max, set by Leo1
 };
 
 //give a local name to the blob of shared data
@@ -226,9 +233,9 @@ const byte LEO2 = 8;       // i2c address of Leo2, Joystick controller
    Serial.print(millis());     \ 
    Serial.print(F(": "));    \
    Serial.print(__FUNCTION__);     \
-   Serial.print(':');      \
+   Serial.print(F(":"));      \
    Serial.print(__LINE__);     \
-   Serial.print(' ');      \
+   Serial.print(F(" "));      \
    Serial.print(str); \
    Serial.print(F(" ")); \
    Serial.print(rpm); \
@@ -245,6 +252,9 @@ const byte LEO2 = 8;       // i2c address of Leo2, Joystick controller
 #else
 #define DEBUG_PRINT(str)
 #endif
+
+
+   
 //
 //
 // ***
@@ -330,10 +340,22 @@ const int ledLight = 13;  // this is the built in LED light (debug only)
 // *** SPEED
 // *** Parameters for speed computation
 // *** we may no longer need these as Leo2 is doing this now.
-const int maxRPM = 96;     // that is pedaling all out
+
+// we are now using throtRange as a factor to adjust this range for cadence.
+// throtRange default value is .70 -- Leo1 sets it via trellis button and potval
+// here's how it works.  range is 20 to maxRPM (180), diff is 160.
+// if we want our range to be 20 to 140, we have to subtract 40, or 1/4 of the range
+// so we would set our throtRange to .75 -- a bit harder than default.
+// so the calculation for the value map is minRPM + (maxRPM - minRPM) * throtRange
+// (Leo2 would do this) so we can stretch the range and make it harder to go fast.
+// larger values = harder work to go fast.  smaller values = easier work to go fast.
+// threw away "mask" in shared data struct to conserve bytes.
+float throtRange = .70;
+
+const int maxRPM = 200;     // that is pedaling all out!
 const int minRPM = 20;      // dead slow
 float rpm = 0.0; 
-float slowThresh = .25 * maxRPM;
+float slowThresh = .30 * maxRPM;
 float medThresh = .50 * maxRPM;                
 float fastThresh = .75 * maxRPM;                
 boolean Stopped = 1;
@@ -445,7 +467,7 @@ void setup() {
 //       goCatatonic(0);       // most severe error, not even a Serial connection: red
 //  }
   
-  Serial.println(F("Yippee yi yay!"));
+  log_print(F("Yippee yi yay!"),1);
 
   Serial.println(F("Pins are initialised"));
   
@@ -579,7 +601,9 @@ void setup() {
     break;
    }
    }
-
+   Serial.print(F("Sharing struct share_data with Leo2:  byte count is "));
+   Serial.println(sizeof(share_data));
+   
 //  lastly set steering 0 position
   centreSteering();
    
@@ -697,11 +721,13 @@ void loop() {
     potVal = share_data.potval;
     if (rpm == 0) {
       Stopped = 1;
+      digitalWrite(redLight,HIGH);
       // Serial.println(F("Stop"));
     } else {
       // Serial.println(F("Start"));
       Stopped = 0;
-      showPotVal = 0;           // when moving, we ALWAYS show rpm??
+      digitalWrite(redLight,LOW);
+      // showPotVal = 0;           // when moving, we ALWAYS show rpm??
     }
     // Serial.println(rpm);
     delay(2);
@@ -710,20 +736,28 @@ void loop() {
     // not sure leo 2 really needs to know ctrlMode, since we are making the steering
     // decisions;  but that could change.
     share_data.steer = steerVal;
-    share_data.mask = 12345;
+    share_data.throtl = logThrottle;
+    share_data.throtr = throtRange;
     putLeo2data();
     
     // Serial.println(F("Put Leo Data"));
      
     // update display  with received rpm OR with potVal depending on which is
     // selected.
-    if (showPotVal) {
+    // we're not actually using this feature... we have 2 displays, one for potval
+    // and one for rpm.  future version might use LCD or OLED screen
+    /*
+     if (showPotVal) {
       matrix.print(potVal);
     } else {
       matrix.print(rpm);
     }
+    */
+    matrix.print(rpm);
     matrix.writeDisplay();
-    displaySpeed();
+    // I think that we don't really need the rainbow light display
+    // because we can watch RPM all the time.  besides, Leo2 should handle that.
+    // displaySpeed();
     lastI2C = now;
     
     }
@@ -846,14 +880,6 @@ void toggleTraffic() {
   Serial.print(F("Set NoTraffic flag to "));  Serial.println(noTraffic);
 }
 
-int intify(float val) {
-  // get a percentage type value 0.0 to 1.0 and turn it into
-  // an int:  you get values 0 through 10 from your pot.
-  // if I were cleverer I would supply another param N that determines
-  // how many values in one pot turn.
-  int v = round(val * 10);
-  return(v);
-}
 
 //
 //// User notification
@@ -991,26 +1017,6 @@ void putLeo2data() {
 }
 
 
-void blinky(int which, int times) {
-  for (int i = 0; i < times; i++) {
-    digitalWrite(which,HIGH);
-    delay(100);
-    digitalWrite(which,LOW);
-    delay(150);
-  }
-}
-
-/*
-void blinky2(int which, int times) {
-  for (int i = 0; i < times; i++) {    
-    mcp.digitalWrite(which,HIGH);
-    delay(100);
-    mcp.digitalWrite(which,LOW); 
-    delay(150);
-  }
-}
-*/
-
 boolean testI2C(byte addr) {
   
   boolean success = 0;
@@ -1048,14 +1054,6 @@ boolean testI2C(byte addr) {
 
 }
 
-void goCatatonic(int which) {
-  // you can't recover from this condition.  just blink a light and hope for rescue.
-  // which can be 0 through 3 -- counting downward from Red.
-  while(1) {
-    blinky((redLight-which),2);
-    delay(500);
-  }
-}
 
 void readTrellis() {
 
@@ -1194,11 +1192,22 @@ void trellisExec() {
       break;
     case 18:
     //    fly commands, E -- this needs a HOLD feature
-      Keyboard.press('e');
-      trellisDown = 1 << trellisPress;
+    //    now changed to "toggle throttle scale algorithm"
+    //    and this should really be a slide switch
+      if (!logThrottle) {
+        Serial.println(F("Set Throttle Map to pseudoLog, scaled to accel slope"));
+        logThrottle = 1;
+        digitalWrite(bluLight,HIGH);
+      } else {
+        Serial.println(F("Set Throttle Map to Boring Linear"));
+        logThrottle = 0;
+        digitalWrite(bluLight,LOW);
+      }
+      // Keyboard.press('e');
+      // trellisDown = 1 << trellisPress;
       break;
     case 19:
-    //    godcam invoke -- KP1
+    //    WAS godcam invoke -- KP1
     //    now changed to Calibrate Steering:  centre bars and push this button.
     // Keyboard.write(KEYPAD_1);
       centreSteering();
@@ -1214,12 +1223,17 @@ void trellisExec() {
       trellisDown = 1 << trellisPress;
       break;
     case 22:
-    //    fly commands, D -- this needs a HOLD feature
-      Keyboard.press('d');
-      trellisDown = 1 << trellisPress;
+    //    WAS fly commands, D -- this needs a HOLD feature
+    //    NOW sets throtRange, a value for tuning cadence
+    //        as with other user settable parameters we use potVal
+      // Keyboard.press('d');
+      // trellisDown = 1 << trellisPress;
+      throtRange = potVal;
+      Serial.print(F("Set Throttle Range Factor to "));
+      Serial.println(throtRange);
       break;
     case 23:
-    //    teleport to location -- KP2
+    //    WAS teleport to location -- KP2
     //    this is now "set steering factor from potval"
       steerFactor = potVal;
       Serial.print(F("Set Steering Sensitivity Factor to "));
@@ -1295,6 +1309,8 @@ void readRotaryHall () {
   // 12.5 pct off each end.  This would make our steering more sensitive
   // as a smaller range of motion would be mapped to the standard +/- 180
   // joystick value.
+  // this is now implemented, late in the process:  potVal is used to set
+  // steerFactor.
   int steerRange = maxRotaryHall - minRotaryHall;
   int adjust = int(steerRange * (1.0 - steerFactor) / 2.0);   // this is zero normally, steerFactor 1.0
   int steerBegin = minRotaryHall + adjust;
@@ -1321,9 +1337,13 @@ void readRotaryHall () {
   }
   
   steerVal = map(rawSteerVal,steerBegin,steerEnd,-180,180);
-  // Serial.print(F("RAW Steer: ")); Serial.print(rawSteerVal);
-  // Serial.print(F("  JOY Steer: ")); Serial.println(steerVal);
-  
+  /*
+  if (steerVal != lastSteer) {
+  Serial.print(F("RAW Steer: ")); Serial.print(rawSteerVal);
+  Serial.print(F("  JOY Steer: ")); Serial.println(steerVal);
+  lastSteer = steerVal;
+  }
+  */
   //Serial.print(F("  Status: "));        // remove // if like to display the bits
   Wire.beginTransmission(0x36);       // transmit to device as5601
   Wire.write(byte(0x0b));             // sets register pointer 
@@ -1332,10 +1352,24 @@ void readRotaryHall () {
   Wire.requestFrom(0x36, 1 );         // request 1 bytes from as5601
   reading = Wire.read();              // receive high byte
   //Serial.print(reading, BIN);       // remove // if like to display the bits
+
+  // we should light a trouble light for too high or too low, with appropriate colour
+  //  we're taking over the rainbow lights for this purpose.
+  digitalWrite(grnLight,LOW);
+  digitalWrite(yloLight,LOW);
   
-  if (bitRead(reading, 5)!=1) { Serial.print(F(" Status: ")); 
-  if (bitRead(reading, 4)==1) Serial.println(F("too high "));
-  if (bitRead(reading, 3)==1) Serial.println(F("too low "));}
+  if (bitRead(reading, 5)!=1) { 
+    Serial.print(F("AS5601 Status: ")); 
+    if (bitRead(reading, 4)==1) {
+      Serial.println(F("too high "));
+      digitalWrite(yloLight,HIGH);
+    } else if (bitRead(reading, 3)==1) {
+      digitalWrite(grnLight,HIGH);
+      Serial.println(F("too low "));
+    } else {
+      Serial.println(reading, HEX);
+    }
+  }
   
    //************************************************************************
 // AGC  ( we don't need the AGC)

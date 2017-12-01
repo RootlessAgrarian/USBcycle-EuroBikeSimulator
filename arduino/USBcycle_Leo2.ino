@@ -38,6 +38,7 @@
 
 // INCLUDE:  Wire.h for i2c, I2C_Anything.h for 2 way data transfer Leo1/Leo2, Joystick.h
 //           for joystick emulation, and TM1637 library for the 2 digit 7seg dumb display.
+#include "USBcycle.h"
 #include <Wire.h>
 #include "I2C_Anything.h"
 #include <Joystick.h>
@@ -118,16 +119,17 @@ struct __attribute__ ((packed)) SHARE_DATA {
   int steer = 0;      // master shares with us the steering sensor position
                       // which could be from chuck or from linear hall sensor
                       // depending on ctrlMode (a Leo1 switch)
-  int mask = 0;       // master shares with us selected switch status or some other value
+  boolean throtl = 0; // copy of logThrottle, set by Leo1 (who owns the trellis keypad)
+  float throtr = 0.0; // copy of throtRange, which stretches throttle min max, set by Leo1
 };
 
 //-------------------------------------------------------------------
 
 // all this also could be in a shared .h file
 float rpm = 0.0;
-const int maxRPM = 96;     // that is pedaling all out on bike (harder than stepper!)
+const int maxRPM = 200;     // that is superhuman pedaling 
 const int minRPM = 20;      // dead slow!
-float slowThresh = .25 * maxRPM;
+float slowThresh = .30 * maxRPM;
 float medThresh = .50 * maxRPM;                
 float fastThresh = .75 * maxRPM; 
 
@@ -239,8 +241,17 @@ int potPct = 0;
   int calTime = 5000;
   int lastRpm;
 
-  float throttleFactor = 1.0;     // factor by which to scale throttle input.
-                                  // default is 1.0
+  boolean logThrottle = 0;     // method by which to map throttle input.  1 means log.
+  float throtFactor = 0.75;      // default is .75
+  float throtRange = .70;
+// throtRange default value is .75 -- Leo1 sets it via trellis button and potval.
+// here's how it works.  working range is 20 to maxRPM (180), diff is 160.
+// if we want our range to be 20 to 140, we have to subtract 40, or 1/4 of the range:
+// so we would set our throtRange to .75 as above.  but if we wanted to climb a long hill
+// or are feeling less fit, and need full throttle more easily, we could make it even less.
+// .50 would give a range of 20 to 100.
+// so the calculation for the value map is minRPM + (maxRPM - minRPM) * throtRange
+// (Leo2 would do this) so we can stretch the range and make it harder to go fast.
 //-------------------------------------------------------------------
 
 //
@@ -414,8 +425,8 @@ void loop() {
 // beta version steering looks jerky ... need to smooth it out somehow... (done)
   
   if (steerVal != lastSteer) {
-  Serial.print(F("New Steer Val:  setYaxis = "));
-  Serial.println(steerVal);
+  // Serial.print(F("New Steer Val:  setYaxis = "));
+  // Serial.println(steerVal);
   Joystick.setYAxis(steerVal);
   lastSteer = steerVal;
   }
@@ -439,10 +450,47 @@ void loop() {
 // if rpm has changed, respond
   if (rpm != lastRpm) {
     tval = 0;         // time for a new throttle value
+    // we only honour throttle values gt minRPM which right now is set to 20
+    // at rpm lower than this, it's hard to figure out what is going on.
     if (rpm >= minRPM) {
       Stopped = 0;
       digitalWrite(bluLight,LOW);
-      tval = map(round(rpm),minRPM,maxRPM,0,255);
+      // map raw FP rpm to integer joystick value 0-255, with dynamic range adjust set by user
+      // throtRange of .50 would yield a range of 20 to 100
+      // .75 would be 20 to 140  (default)
+      // .90 would be 20 to 164
+      // so the bigger this number is,the harder you have to work for a given throttle setting.
+      // so... that determines your cadence when you are cruising at 60 kph on the flat 
+      // for example.  it would be nice to display tval graphically in a future version.
+      // it would be nice to have a GUI for each of these user params and maybe a slider pot
+      // instead of a rotary, and hmmm custom value maps displayed (appropriate scale) so a
+      // 2 button process:  push button A to "set foo", move pot, see value displayed, push button
+      // A again to confirm.  oooh, stateful.  maybe 2 buttons, one specific to foo, one generic
+      // confirm.  easier to manage.  anyway...
+      float maxr = minRPM + ((maxRPM - minRPM) * throtRange);
+      float mrpm = rpm;
+      // another attempt at goosing the startup:  version 2 was not adequate.  we need a
+      // much stronger effect, particularly since acceleration is relatively few samples,
+      // like 12 or fewer.  so let's get brutal about it:  IF aDelta (diff) is gt 1 rpm since
+      // last sample AND our rpm is still less than 53 (for argument's sake) then really
+      // wail on that throttle, x3.  so 40 becomes 120.  50 becomes 150.  and we should 
+      // take off fast.  this may backfire when ending a coast, but we'll see.  it should
+      // give us more of an acceleration feel.  the curve is weird (with a huge dropoff
+      // exactly at 53 rpm but this is somewhat similar to the effort curve getting a bike
+      // moving -- grunt, grunt, grunt, then relax.  when driving with the DFGT setup one
+      // does have to lead-foot it for the first few seconds to get any acceleration.
+      // the mult factor could be user-settable and a float... OMG another param.
+      // after much anguish I think I'm being way too subtle here and what we want is 
+      // a sledgehammer not a screwdriver.  I think we should just peg the rpm and push
+      // the joystic axis to 255 (max) during acceleration.  KISS.
+      // it still may not be enough, as it only takes 4 or 5 samples to get up to 53 rpm.  
+      // we *really* need the telemetry (sigh)... so ugly.  a third duino?  yikes.
+      if (logThrottle && (aDelta > 1.0) && (rpm < 53)) {
+            // mrpm = rpm * 3.0;
+            // floor it!
+            mrpm = maxr;
+      }
+      tval = map(round(mrpm),minRPM,maxr,0,255);
     /*
     Serial.print("RPM = ");
     Serial.print(rpm);
@@ -451,6 +499,56 @@ void loop() {
     Serial.print("   STEER = ");
     Serial.println(steerVal);
     */
+    // linear is too simple minded.  it's so slooow getting the truck moving.
+    // what we really want is for throttle map value
+    // to be like a log function -- very steep at first then flattening off.
+    // a simple log curve is y = log2(x):  Y increases steeply at first with X, then
+    // rolls off.  so if we've mapped raw val to tval (the linear value), we could 
+    // convert that to log2 of val and then map back into 0-255.  there is no log2
+    // function in Arduino C but axiomatically
+    //             log2(X) = log(X)/log(2) = ln(X)/ln(2)
+    // so we can still calculate it.
+    // so this is a log throttle curve that can be turned on or off...
+    // been through a few iterations of this including reMap, and it seems to me the
+    // simplest method is to keep track of last rpm increment (slope, in other words).
+    // if we interpret last incr as a percentage of last val, then we have a factor we
+    // could use to magnify current val.  this 2nd-order stuff looks a lot like a log
+    // curve if you plot it :-)  but it merges seamlessly into linear as accel diminishes.
+    // so here's the algorithm:  IFF rpm is increasing (aDelta > 0) then figure out the
+    // percentage increase over lastavg, i.e. what percentage of lastavg is aDelta.
+    // if last avg was 40 and average now is 60, we increased by 20 which is 50 percent
+    // of 40, so our factor is 1.50.  we now multiply our tval (implicitly our avg rpm)
+    // by 1.5, so we map tval to an rpm of 90 instead of 60.  As our acceleration tapers
+    // off and we reach desired cadence, aDelta gets smaller until it is zero and we are
+    // now mapping linearly from rpm to tval.  and yes this could mean that throttle value
+    // gets smaller while pedalling speed is still increasing, but the truck has mass and
+    // inertia so its speed is still increasing even as we back off on the throttle.  it
+    // is worth a try anyway.  this algorithm also means that we can still get to max
+    // throttle if we can spin fast enough.  0-100 rpm seems like a reasonable range, but
+    // we don't "get into gear" until we hit 20 rpm so I'll map the range to 20-100 rpm.
+    // the goal is to have a reasonable cruise speed at a reasonable cadence and this I
+    // think must be tunable via potval;  different cyclists will have different fitness
+    // levels & preferred cadence.  potval could be used to adjust maxRPM. (implemented nov 24)
+    // actual aDeltas are quite small even when pedalling hard, values like 6, 4, 2.
+    // gonna try a multiplier of 20 x throtRange and see how that feels.  
+    // in a release version this multiplier too should
+    // be configurable via an interactive screen (future feature) with menus and so on.
+    // I wonder if we have enough memory left for that -- might need a Due.
+    // VERSION 2
+    /*  
+        if (logThrottle) {
+        if (aDelta > 0) {
+          throtFactor = 1 + (aDelta * throtRange * 20 / lastavg);
+          tval = tval * throtFactor;
+        }
+     */ 
+     // VERSION 1
+        // float tlog2 = log(tval)/log(2);
+        // tval = throtFactor * map(round(tlog2*1000),0,8000,0,255);
+        // Serial.print(F("RPM: "));  Serial.print(rpm);
+        // Serial.print(F(" log+scale map to joy val  "));  Serial.println(tval);
+        
+      constrain(tval,0,255);
       Joystick.setXAxis(tval);
     } else {
       digitalWrite(bluLight,HIGH);    // we've stopped pedalling
@@ -501,7 +599,8 @@ void loop() {
   noInterrupts();
   dataRcvd = 0;
   steerVal = share_data.steer;
-  swMask = share_data.mask;
+  logThrottle = share_data.throtl;
+  throtRange = share_data.throtr;
   interrupts();
   
   // note that swMask is not actually being used, but if it were used it could pass
@@ -889,17 +988,6 @@ void checkBrake() {
   
 }
 
-//
-// generic stuff that should be in a shared .h
-//
-void blinky(int which, int times) {
-  for (int i = 0; i < times; i++) {
-    digitalWrite(which,HIGH);
-    delay(100);
-    digitalWrite(which,LOW);
-    delay(150);
-  }
-}
 
 
 //-------------------------------------------------------------------
