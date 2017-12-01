@@ -5,6 +5,7 @@ getduino:
 		cp /Users/de/Work/ARDUINO/devel/PROJECTS/USBcycle_Diagnostic/USBcycle_Diagnostic.ino ./arduino
 		cp /Users/de/Work/ARDUINO/devel/PROJECTS/USBcycle_Leo1_Test/USBcycle_Leo1_Test.ino ./arduino
 		cp /Users/de/Work/ARDUINO/devel/PROJECTS/USBcycle_Leo2_Test/USBcycle_Leo2_Test.ino ./arduino
+		cp /Users/de/Work/ARDUINO/devel/LIBRARIES/USBcycle/USBcycle.h ./arduino
 
 getprof:
 		cp -r /Users/de/Library/Application\ Support/Euro\ Truck\ Simulator\ 2/profiles/4379636C697374 ETS2_profiles
