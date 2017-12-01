@@ -15,6 +15,7 @@ int intify(float val) {
 // t is time in seconds = millis()/1000;
 char * TimeToString(unsigned long t)
 {
+ t = t/1000;
  static char str[12];
  long h = t / 3600;
  t = t % 3600;
@@ -27,11 +28,7 @@ char * TimeToString(unsigned long t)
 void log_print(const __FlashStringHelper *str, boolean flag) {
   
    Serial.print(TimeToString(millis()));     \ 
-   Serial.print(F(": "));    \
-   Serial.print(__FUNCTION__);     \
-   Serial.print(F("@"));      \
-   Serial.print(__LINE__);     \
-   Serial.print(F(": "));      \
+   Serial.print(F(" --  "));    \
    Serial.print(str); 
    // if bool flag then end line, otherwise leave it open and add more stuff later
    if (flag) Serial.println(F(""));

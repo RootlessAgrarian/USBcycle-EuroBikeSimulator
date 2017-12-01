@@ -244,14 +244,12 @@ int potPct = 0;
   boolean logThrottle = 0;     // method by which to map throttle input.  1 means log.
   float throtFactor = 0.75;      // default is .75
   float throtRange = .70;
-// throtRange default value is .75 -- Leo1 sets it via trellis button and potval.
-// here's how it works.  working range is 20 to maxRPM (180), diff is 160.
-// if we want our range to be 20 to 140, we have to subtract 40, or 1/4 of the range:
-// so we would set our throtRange to .75 as above.  but if we wanted to climb a long hill
-// or are feeling less fit, and need full throttle more easily, we could make it even less.
-// .50 would give a range of 20 to 100.
-// so the calculation for the value map is minRPM + (maxRPM - minRPM) * throtRange
-// (Leo2 would do this) so we can stretch the range and make it harder to go fast.
+// throtRange default value is .70 -- Leo1 sets it via trellis button and potval.
+// here's how it works.  working range is 20 to maxRPM (200), diff is 180.
+// we multiply that diff by throtRange and add it to minRPM.
+// .50 would give a range of 20 to 90+20, or 20 to 110 (very easy)
+// so the calculation for the value map is (minRPM + ((maxRPM - minRPM) * throtRange))
+// (Leo2 does this) so we can stretch the range and make it harder to go fast.
 //-------------------------------------------------------------------
 
 //
@@ -312,7 +310,7 @@ void setup() {
   // 
   // now try to join the I2C bus and hope that the bus master is awake by now
   //
-  Serial.println("Join I2C bus");
+  log_print(F("Join I2C bus"),1);
   // join i2c bus as slave but only if we see pullup voltage on pins 2 and 3
   int d2 = 0;
   int d3 = 0;
@@ -320,10 +318,10 @@ void setup() {
     d2 = digitalRead(2);
     d3 = digitalRead(3);
     if (!(d2&d3)) {
-      Serial.println(F("OUCH, no I2C bus power."));
+      log_print(F("OUCH, no I2C bus power."),1);
       blinky(stopLED,6);
     } else {
-      Serial.println(F("I2C bus power is OK, join bus as slave #8"));
+      log_print(F("I2C bus power is OK, join bus as slave #8"),1);
       break;
     }
   delay(100);
@@ -339,7 +337,7 @@ void setup() {
   //
   // startup the joystick emulation
   //
-  Serial.println("Begin Joystick emulation!");
+  log_print(F("Begin Joystick emulation!"),1);
   Joystick.begin();
   delay(100);
   
@@ -351,7 +349,7 @@ void setup() {
   // Joystick.setHatSwitch(0,JOYSTICK_HATSWITCH_RELEASE);
   delay (100);
 
-  Serial.println("Init telemetry");
+  log_print(F("Init telemetry"),1);
   initTelemetry();
 
   lastBrake = analogRead(brakePin);
@@ -454,102 +452,40 @@ void loop() {
     // at rpm lower than this, it's hard to figure out what is going on.
     if (rpm >= minRPM) {
       Stopped = 0;
-      digitalWrite(bluLight,LOW);
       // map raw FP rpm to integer joystick value 0-255, with dynamic range adjust set by user
-      // throtRange of .50 would yield a range of 20 to 100
-      // .75 would be 20 to 140  (default)
-      // .90 would be 20 to 164
+      // default range is 20 to 200, so 180 rpm difference.
+      // throtRange of .50 would yield a range of 20 to 110 (20 + diff * .50)
+      // .70 would be 20 to 146  (default)
+      // .90 would be 20 to 182  (challenging!)
       // so the bigger this number is,the harder you have to work for a given throttle setting.
       // so... that determines your cadence when you are cruising at 60 kph on the flat 
-      // for example.  it would be nice to display tval graphically in a future version.
-      // it would be nice to have a GUI for each of these user params and maybe a slider pot
-      // instead of a rotary, and hmmm custom value maps displayed (appropriate scale) so a
-      // 2 button process:  push button A to "set foo", move pot, see value displayed, push button
-      // A again to confirm.  oooh, stateful.  maybe 2 buttons, one specific to foo, one generic
-      // confirm.  easier to manage.  anyway...
+      // for example.  
       float maxr = minRPM + ((maxRPM - minRPM) * throtRange);
       float mrpm = rpm;
-      // another attempt at goosing the startup:  version 2 was not adequate.  we need a
-      // much stronger effect, particularly since acceleration is relatively few samples,
-      // like 12 or fewer.  so let's get brutal about it:  IF aDelta (diff) is gt 1 rpm since
-      // last sample AND our rpm is still less than 53 (for argument's sake) then really
-      // wail on that throttle, x3.  so 40 becomes 120.  50 becomes 150.  and we should 
-      // take off fast.  this may backfire when ending a coast, but we'll see.  it should
-      // give us more of an acceleration feel.  the curve is weird (with a huge dropoff
-      // exactly at 53 rpm but this is somewhat similar to the effort curve getting a bike
-      // moving -- grunt, grunt, grunt, then relax.  when driving with the DFGT setup one
-      // does have to lead-foot it for the first few seconds to get any acceleration.
-      // the mult factor could be user-settable and a float... OMG another param.
-      // after much anguish I think I'm being way too subtle here and what we want is 
-      // a sledgehammer not a screwdriver.  I think we should just peg the rpm and push
-      // the joystic axis to 255 (max) during acceleration.  KISS.
-      // it still may not be enough, as it only takes 4 or 5 samples to get up to 53 rpm.  
-      // we *really* need the telemetry (sigh)... so ugly.  a third duino?  yikes.
-      if (logThrottle && (aDelta > 1.0) && (rpm < 53)) {
+      // and here we do a shameless hack to goose the acceleration, to overcome the mass of
+      // the truck (someday we'll have telemetry to assist in this algorithm, right now we
+      // just brute-force it.
+      if (logThrottle && (aDelta > 1.0) && (rpm < 55)) {
             // mrpm = rpm * 3.0;
             // floor it!
             mrpm = maxr;
       }
       tval = map(round(mrpm),minRPM,maxr,0,255);
+
+      constrain(tval,0,255);
+      Joystick.setXAxis(tval);
+
     /*
-    Serial.print("RPM = ");
+    log_print(F("RPM = "),0);
     Serial.print(rpm);
-    Serial.print("   THRO = ");
+    Serial.print(F("    MRPM = "));
+    Serial.print(mrpm);
+    Serial.print("   TVAL = ");
     Serial.print(tval);
     Serial.print("   STEER = ");
     Serial.println(steerVal);
     */
-    // linear is too simple minded.  it's so slooow getting the truck moving.
-    // what we really want is for throttle map value
-    // to be like a log function -- very steep at first then flattening off.
-    // a simple log curve is y = log2(x):  Y increases steeply at first with X, then
-    // rolls off.  so if we've mapped raw val to tval (the linear value), we could 
-    // convert that to log2 of val and then map back into 0-255.  there is no log2
-    // function in Arduino C but axiomatically
-    //             log2(X) = log(X)/log(2) = ln(X)/ln(2)
-    // so we can still calculate it.
-    // so this is a log throttle curve that can be turned on or off...
-    // been through a few iterations of this including reMap, and it seems to me the
-    // simplest method is to keep track of last rpm increment (slope, in other words).
-    // if we interpret last incr as a percentage of last val, then we have a factor we
-    // could use to magnify current val.  this 2nd-order stuff looks a lot like a log
-    // curve if you plot it :-)  but it merges seamlessly into linear as accel diminishes.
-    // so here's the algorithm:  IFF rpm is increasing (aDelta > 0) then figure out the
-    // percentage increase over lastavg, i.e. what percentage of lastavg is aDelta.
-    // if last avg was 40 and average now is 60, we increased by 20 which is 50 percent
-    // of 40, so our factor is 1.50.  we now multiply our tval (implicitly our avg rpm)
-    // by 1.5, so we map tval to an rpm of 90 instead of 60.  As our acceleration tapers
-    // off and we reach desired cadence, aDelta gets smaller until it is zero and we are
-    // now mapping linearly from rpm to tval.  and yes this could mean that throttle value
-    // gets smaller while pedalling speed is still increasing, but the truck has mass and
-    // inertia so its speed is still increasing even as we back off on the throttle.  it
-    // is worth a try anyway.  this algorithm also means that we can still get to max
-    // throttle if we can spin fast enough.  0-100 rpm seems like a reasonable range, but
-    // we don't "get into gear" until we hit 20 rpm so I'll map the range to 20-100 rpm.
-    // the goal is to have a reasonable cruise speed at a reasonable cadence and this I
-    // think must be tunable via potval;  different cyclists will have different fitness
-    // levels & preferred cadence.  potval could be used to adjust maxRPM. (implemented nov 24)
-    // actual aDeltas are quite small even when pedalling hard, values like 6, 4, 2.
-    // gonna try a multiplier of 20 x throtRange and see how that feels.  
-    // in a release version this multiplier too should
-    // be configurable via an interactive screen (future feature) with menus and so on.
-    // I wonder if we have enough memory left for that -- might need a Due.
-    // VERSION 2
-    /*  
-        if (logThrottle) {
-        if (aDelta > 0) {
-          throtFactor = 1 + (aDelta * throtRange * 20 / lastavg);
-          tval = tval * throtFactor;
-        }
-     */ 
-     // VERSION 1
-        // float tlog2 = log(tval)/log(2);
-        // tval = throtFactor * map(round(tlog2*1000),0,8000,0,255);
-        // Serial.print(F("RPM: "));  Serial.print(rpm);
-        // Serial.print(F(" log+scale map to joy val  "));  Serial.println(tval);
-        
-      constrain(tval,0,255);
-      Joystick.setXAxis(tval);
+    
     } else {
       digitalWrite(bluLight,HIGH);    // we've stopped pedalling
     }
@@ -569,7 +505,7 @@ void loop() {
   delay(5);
   }
 
-  // there is something very odd about this pot.  if it is set to max value .99, then
+  // there is something very odd about the pot.  if it is set to max value .99, then
   // rpm goes to zero and stays there despite pedalling.  
   // if it is set to min value 0 then rpm seems correct.
   // if it is set in between somewhere then rpm repeatedly and randomly drops to zero 
@@ -588,7 +524,7 @@ void loop() {
   }
 
   if (dataRcvd) {
-    Serial.print(F("I2C Error, expected "));
+    log_print(F("I2C Error, expected "),0);
     Serial.print(sizeof(share_data));
     Serial.print(F("bytes from Leo1 but got "));
     Serial.println(dataRcvd);
@@ -751,9 +687,10 @@ int readSensor(int i) {
       Serial.println(spindir);
       */
       if (spindir != lastdir) {
-        msg = "*** CHANGE DIR: " ;
-        msg2 = msg + lastedge + " --> " + i + " last " + lastdir + " now " + spindir;
-        DEBUG_PRINT("msg2");
+        log_print(F("*** CHANGE DIR: "),0) ;
+        Serial.print(lastedge);  Serial.print(F(" --> "));  Serial.print(i);
+        Serial.print(F(" lastdir "));  Serial.print(lastdir); 
+        Serial.print(F(" now ")); Serial.println(spindir);
          zeroBoxcar(i);
          zeroBoxcar(0);
       }
@@ -802,9 +739,9 @@ int readSensor(int i) {
     // if it has been timeout ms since most recent rising edge, then we are stopped
     if (!Stopped) {
     if (dt > timeout) { 
-      msg = "Timeout on " ;
-      msg2 = msg + i + " " + dt + " > " + timeout;
-      DEBUG_PRINT(msg2);
+      log_print(F("Timeout on "),0);
+      Serial.print(i); Serial.print(F(" ")); Serial.print(dt);
+      Serial.print(F(" > ")); Serial.println(timeout);
       stopTheWorld(i); 
     }
     }
@@ -835,7 +772,7 @@ void stopTheWorld(int i) {
       // if not already stopped, stop the machinery, kill the lights.
       // this is the only place where the Stopped flag is tested.
       if (!Stopped) {      
-      DEBUG_PRINT("STOP DETECTED");
+      log_print(F("STOP DETECTED"),1);
       Joystick.setXAxis(0);
       digitalWrite(rled0,LOW);
       digitalWrite(rled1,LOW);
@@ -877,8 +814,7 @@ void updateRpm(float rpm)  {
       }
       // calculate the average:
       average = total / numReadings;
-      msg = "New Average RPM" ;
-      DEBUG_PRINT(msg);
+      // log_print(F("New Average RPM"),1);
 
 //      if (average > maxRPM) { maxRPM = average;}
       // how is it different from last avg?  neg if less, pos if more
@@ -940,7 +876,7 @@ boolean checkCalibration() {
       digitalWrite(rled1,LOW);
       digitalWrite(rled2,LOW);
       
-      Serial.println("Done with calibration.");
+      log_print(F("Done with calibration."),1);
 
       return (1) ;
     }

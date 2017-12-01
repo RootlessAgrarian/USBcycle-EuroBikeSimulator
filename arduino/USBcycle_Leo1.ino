@@ -469,7 +469,7 @@ void setup() {
   
   log_print(F("Yippee yi yay!"),1);
 
-  Serial.println(F("Pins are initialised"));
+  log_print(F("Pins are initialised"),1);
   
 // join i2c bus as master but only if we see pullup voltage on pins 2 and 3
   int d2 = 0;
@@ -478,11 +478,11 @@ void setup() {
     d2 = digitalRead(2);
     d3 = digitalRead(3);
     if (!(d2&d3)) {
-      Serial.println(F("OUCH, no I2C bus power."));
+      log_print(F("OUCH, no I2C bus power."),1);
       blinky(yloLight,6);
     } else {
       blinky(grnLight,3);  
-      Serial.println(F("I2C bus is OK, start Wire library and wait 1/2 sec"));
+      log_print(F("I2C bus is OK, start Wire library and wait 1/2 sec"),1);
       break;
     }
   }
@@ -493,7 +493,7 @@ void setup() {
 
 // now start up the i2c steering sensor
 
-  Serial.println(F("Init rotary Hall effect (steering) sensor"));
+  log_print(F("Init rotary Hall effect (steering) sensor"),1);
   
   bool i2cOK = testI2C(0x36);
   if (!i2cOK) {goCatatonic(3);}   // next most severe:  individual slave missing:  blue
@@ -503,7 +503,7 @@ void setup() {
   
 // now start up the numeric display so we can say "Init" and other things
 // we will hang here forever if we don't get a response from matrix.
- Serial.println(F("Init 7 segment matrix"));
+ log_print(F("Init 7 segment matrix"),1);
  
   i2cOK = testI2C(0x71);
   if (!i2cOK) {goCatatonic(3);}   // next most severe:  individual slave missing:  blue
@@ -516,13 +516,13 @@ void setup() {
   
   matrixInitMsg();
   
-  Serial.println(F("Init 2 Trellis Keypads"));
+  log_print(F("Init 2 Trellis Keypads"),1);
 
   i2cOK = testI2C(0x76);
   if (!i2cOK) {goCatatonic(3);}   // next most severe:  individual slave missing:  blue
   i2cOK = testI2C(0x77);
   if (!i2cOK) {goCatatonic(3);}   // next most severe:  individual slave missing:  blue
-  Serial.println(F("...do a victory roll on the keypads..."));
+  log_print(F("...do a victory roll on the keypads..."),1);
   trellis.begin(0x76, 0x77);
   // do a highly visible victory roll on the trellis LEDs
   for (uint8_t i=0; i<numKeys; i++) {
@@ -549,7 +549,7 @@ void setup() {
   // INIT Mouse and Keyboard HID functions 
   //
   blinky(yloLight,3);  
-  Serial.println(F("Mouse and keyboard begin"));
+  log_print(F("Mouse and keyboard begin"),1);
 //  Mouse.begin();
 //  delay(1);
   Keyboard.begin();
@@ -588,7 +588,7 @@ void setup() {
   // and set a fail flag and do an empty main loop.
   // aargh we should be doing this for all our i2c slaves.  more thought needed.
     
-   Serial.println(F("Check for Leo2 on bus"));
+   log_print(F("Check for Leo2 on bus"),1);
    matrixLeo2Msg();
    // if we can't find Leo2 on the I2C bus then all is lost, so we just keep trying.  forever.
    while(1) {
@@ -597,11 +597,11 @@ void setup() {
     blinky(bluLight,2);
     delay(1000);
    } else {
-    Serial.println(F("Leo2 is on the I2C bus, all systems go"));
+    log_print(F("Leo2 is on the I2C bus, all systems go"),1);
     break;
    }
    }
-   Serial.print(F("Sharing struct share_data with Leo2:  byte count is "));
+   log_print(F("Sharing struct share_data with Leo2:  byte count is "),0);
    Serial.println(sizeof(share_data));
    
 //  lastly set steering 0 position
@@ -614,7 +614,7 @@ void setup() {
   delay(2000);
   
   DEBUG_PRINT("INIT COMPLETE");
-  Serial.println(F("*** Done with setup! ***"));
+  log_print(F("*** Done with setup! ***"),1);
   
 } 
 
@@ -796,7 +796,7 @@ void setWarp(float val) {
   Keyboard.println(" \n");
   delay(100);
   Keyboard.write('`');
-  Serial.print(F("Set Warp to "));
+  log_print(F("Set Warp to "),0);
   Serial.println(val); 
 }
 
@@ -807,7 +807,7 @@ void goTomorrow() {
   Keyboard.println("g_set_time 4 \n");
   delay(100);
   Keyboard.write('`');
-  Serial.println(F("Set time to Tomorrow 4am"));
+  log_print(F("Set time to Tomorrow 4am"),1);
 }
 
 void fixWeather() {
@@ -818,7 +818,7 @@ void fixWeather() {
   Keyboard.println("g_set_weather 0 i \n");
   delay(100);
   Keyboard.write('`');
-  Serial.println(F("Set weather to improve gradually"));
+  log_print(F("Set weather to improve gradually"),1);
 }
 
 
@@ -841,7 +841,8 @@ void goPlace(float val) {
   Keyboard.release(KEYPAD_2);
   delay(50);
   Keyboard.write('5');    // switch back to camera 5
-  Serial.print(F("GOTO place# ")); Serial.print(ptr); Serial.print(F(" : "));
+  log_print(F("GOTO place# "),0); 
+  Serial.print(ptr); Serial.print(F(" : "));
   Serial.print(rname); Serial.print(F(" ("));
   Serial.print(coords);  Serial.println(F(")"));
   
@@ -861,6 +862,8 @@ void goTime(float val) {
   Keyboard.print("g_set_time ");
   Keyboard.print(hourstr);
   Keyboard.println("\n");
+  log_print(F("Go to tomorrow time :"),0);
+  Serial.println(hourstr);
 }
 
 void toggleTraffic() {
@@ -877,7 +880,7 @@ void toggleTraffic() {
   }
   delay(100);
   Keyboard.write('`');
-  Serial.print(F("Set NoTraffic flag to "));  Serial.println(noTraffic);
+  log_print(F("Set NoTraffic flag to "),0);  Serial.println(noTraffic);
 }
 
 
@@ -954,7 +957,7 @@ void areWeSending () {
     //Keyboard.end();
     //Mouse.end();
     usbHIDsending = 0;
-    Serial.println(F("HID emulation OFF"));
+    log_print(F("HID emulation OFF"),1);
     digitalWrite(whtLight,HIGH);          // warning light (s/b red but oh well)
     } 
     // Serial.println(F("\nKEYBOARD END"));
@@ -963,7 +966,7 @@ void areWeSending () {
       //Keyboard.begin();
       //Mouse.begin(); 
       usbHIDsending = 1;
-      Serial.println(F("HID emulation ON"));
+      log_print(F("HID emulation ON"),1);
       digitalWrite(whtLight,LOW);
     }
   }
@@ -985,7 +988,9 @@ void mouseDance(int steps) {
   
 }
 
-
+// TODO:  this should return an int value, if nonzero we have a problem (# bytes?)
+// then we should increment a backoff timer up to some max, so we don't spin our wheels
+// so badly if Leo2 is rebooting.
 void getLeo2data() {
   int got;
   int want = sizeof(share_data);
@@ -993,7 +998,7 @@ void getLeo2data() {
   Wire.requestFrom(I2C_SLAVE_ADDRESS, want);
   got = Wire.available();
   if (got != want) {
-    Serial.print(F("ERROR, expected byte count "));
+    log_print(F("ERROR, expected byte count "),0);
     Serial.print(want);
     Serial.print(F(" from Wire read of Leo2, but got "));
     Serial.println(got);
@@ -1010,7 +1015,7 @@ void putLeo2data() {
   Wire.write ((uint8_t*) &share_data, sizeof(share_data));
   status = Wire.endTransmission();
   if (status) {
-    Serial.print(F("ERROR on Wire.write to Leo2: "));
+    log_print(F("ERROR on Wire.write to Leo2: "),0);
     Serial.println(status);    
   }
   
@@ -1021,7 +1026,7 @@ boolean testI2C(byte addr) {
   
   boolean success = 0;
   for (int attempt = 0; attempt < 4; attempt++) {
-    Serial.print(F("  Try to transmit to address "));
+    log_print(F("  Try to transmit to address "),0);
     Serial.print(addr,HEX);
     Serial.print(F("  dec "));
     Serial.println(addr);
@@ -1037,12 +1042,12 @@ boolean testI2C(byte addr) {
   byte error = Wire.endTransmission();
   if (error == 0)
   {
-     Serial.print(F("  Found slave alive and listening on try: "));
+     log_print(F("  Found slave alive and listening on try: "),0);
      Serial.println(attempt);
      success = 1;
      break;
   } else {
-     Serial.print(F("  Slave contact attempt: "));
+     log_print(F("  Slave contact attempt: "),0);
      Serial.print(attempt);
      Serial.print(F("  ... ERROR: "));
      Serial.println(error);
@@ -1071,7 +1076,7 @@ void readTrellis() {
     for (uint8_t i=0; i<numKeys; i++) {
     // if it was pressed, turn it on
       if (trellis.justPressed(i)) {
-        Serial.print(F("v")); Serial.println(i);
+        log_print(F("v"),0); Serial.println(i);
         trellis.setLED(i);
         if (!trellisDown) {
         trellisPress = i;
@@ -1079,7 +1084,7 @@ void readTrellis() {
       } 
     // if it was released, turn it off
       if (trellis.justReleased(i)) {
-        Serial.print(F("^")); Serial.println(i);
+        log_print(F("^"),0); Serial.println(i);
         trellis.clrLED(i);
         Keyboard.releaseAll();
         trellisDown = 0;
@@ -1195,11 +1200,11 @@ void trellisExec() {
     //    now changed to "toggle throttle scale algorithm"
     //    and this should really be a slide switch
       if (!logThrottle) {
-        Serial.println(F("Set Throttle Map to pseudoLog, scaled to accel slope"));
+        log_print(F("Set Throttle Map to pseudoLog, scaled to accel slope"),1);
         logThrottle = 1;
         digitalWrite(bluLight,HIGH);
       } else {
-        Serial.println(F("Set Throttle Map to Boring Linear"));
+        log_print(F("Set Throttle Map to Boring Linear"),1);
         logThrottle = 0;
         digitalWrite(bluLight,LOW);
       }
@@ -1229,14 +1234,14 @@ void trellisExec() {
       // Keyboard.press('d');
       // trellisDown = 1 << trellisPress;
       throtRange = potVal;
-      Serial.print(F("Set Throttle Range Factor to "));
+      log_print(F("Set Throttle Range Factor to "),0);
       Serial.println(throtRange);
       break;
     case 23:
     //    WAS teleport to location -- KP2
     //    this is now "set steering factor from potval"
       steerFactor = potVal;
-      Serial.print(F("Set Steering Sensitivity Factor to "));
+      log_print(F("Set Steering Sensitivity Factor to "),0);
       Serial.println(steerFactor);
       // Keyboard.write(KEYPAD_2);
       break;
@@ -1297,7 +1302,7 @@ void initRotaryHall() {
   result = Wire.endTransmission();    // stop transmitting
   Wire.requestFrom(0x36, 1);          // request 2 bytes from as5601
   int reading = Wire.read();
-    Serial.print(F("Qres: "));
+  log_print(F("Qres: "),0);
 // receive high byte 
   Serial.print(reading,BIN);   
   Serial.println(F("")); 
@@ -1359,7 +1364,7 @@ void readRotaryHall () {
   digitalWrite(yloLight,LOW);
   
   if (bitRead(reading, 5)!=1) { 
-    Serial.print(F("AS5601 Status: ")); 
+    log_print(F("AS5601 Status: "),0); 
     if (bitRead(reading, 4)==1) {
       Serial.println(F("too high "));
       digitalWrite(yloLight,HIGH);
@@ -1438,7 +1443,7 @@ void centreSteering () {
     Serial.println(F("Rotary Hall Encoder misaligned with magnet!"));
   } */
   blinky(bluLight,6);
-  Serial.print(F("Steering re-centred at raw value "));
+  log_print(F("Steering re-centred at raw value "),0);
   Serial.println(rawSteerVal);
   
 }
